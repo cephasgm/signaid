@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>SIGNAID – Video Call with Sign Translation</title>
+  <title>SIGNAID – AI Grammar Correction</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2563eb">
   <!-- Three.js -->
@@ -55,6 +55,7 @@
     .sign-buttons { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
     .sign-btn { background:rgba(37,99,235,0.3); border:1px solid #2563eb; padding:6px 12px; border-radius:30px; font-size:0.8rem; cursor:pointer; }
     .phrase-btn { background:rgba(16,185,129,0.3); border:1px solid #10b981; padding:6px 12px; border-radius:30px; font-size:0.8rem; cursor:pointer; }
+    .rule-btn { background:rgba(245,158,11,0.3); border:1px solid #f59e0b; padding:6px 12px; border-radius:30px; font-size:0.8rem; cursor:pointer; }
     .sign-btn.recording, .phrase-btn.recording { background:#dc2626; border-color:#dc2626; animation:pulse 1s infinite; }
     .community-item { background:rgba(0,0,0,0.3); border-radius:20px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; }
     .community-name { font-weight:600; color:white; }
@@ -68,12 +69,19 @@
     .call-panel { margin-top:16px; background:rgba(0,0,0,0.3); border-radius:24px; padding:12px; }
     .remote-video { width:100%; border-radius:16px; background:#000; margin-top:8px; }
     .call-controls { display:flex; gap:8px; margin-top:12px; }
+    .grammar-toggle { display:flex; align-items:center; gap:12px; margin:12px 0; padding:8px; background:rgba(0,0,0,0.3); border-radius:40px; }
+    .toggle-switch { position:relative; display:inline-block; width:50px; height:24px; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ccc; transition:0.3s; border-radius:24px; }
+    .slider:before { position:absolute; content:""; height:18px; width:18px; left:3px; bottom:3px; background-color:white; transition:0.3s; border-radius:50%; }
+    input:checked + .slider { background-color:#10b981; }
+    input:checked + .slider:before { transform:translateX(26px); }
   </style>
 </head>
 <body>
 <div class="app-container">
   <nav class="navbar">
-    <div class="logo">🧠 SIGN<span style="color:#2563eb;">AID</span> <span style="font-size:0.7rem;">Video Call</span></div>
+    <div class="logo">🧠 SIGN<span style="color:#2563eb;">AID</span> <span style="font-size:0.7rem;">Grammar AI</span></div>
     <div class="nav-buttons">
       <span id="userStatus" class="status-badge">Offline</span>
       <button id="loginBtn" class="btn-outline">Sign In</button>
@@ -112,11 +120,12 @@
       </div>
     </div>
 
-    <!-- Right panel: Translation + Training + Community + Call -->
+    <!-- Right panel: All tabs -->
     <div class="panel">
       <div class="tab-bar">
         <button class="tab active" data-tab="local">🏠 Local Model</button>
         <button class="tab" data-tab="phrases">🔤 Phrases</button>
+        <button class="tab" data-tab="grammar">📖 Grammar AI</button>
         <button class="tab" data-tab="community">🌍 Community</button>
         <button class="tab" data-tab="call">📞 Call</button>
       </div>
@@ -132,10 +141,16 @@
           <div class="output-text" id="outputText">—</div>
           <div class="confidence" id="confidence">Confidence: —</div>
         </div>
+        <div class="grammar-toggle">
+          <span style="color:white;">✨ AI Grammar Correction</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="grammarToggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
         <div class="action-buttons" style="margin-top:12px;">
           <button id="saveTranslationBtn" class="btn-outline" style="flex:1;">💾 Save offline</button>
         </div>
-
         <div class="training-section">
           <h3 style="color:white; font-size:1rem; margin:16px 0 8px;">📖 Train Individual Signs</h3>
           <div id="signsContainer" class="sign-buttons"></div>
@@ -177,19 +192,42 @@
         </div>
       </div>
 
-      <!-- COMMUNITY TAB -->
+      <!-- GRAMMAR AI TAB (NEW) -->
+      <div id="grammarTab" style="display:none;">
+        <div class="training-section">
+          <h3 style="color:white; font-size:1rem; margin:16px 0 8px;">✨ Grammar Correction Rules</h3>
+          <p style="color:#94a3b8; font-size:0.75rem; margin-bottom:12px;">Teach the AI how to convert sign sequences into natural language.</p>
+          <div id="rulesContainer" class="sign-buttons" style="flex-direction:column;"></div>
+          <div style="display:flex; gap:8px; margin:12px 0;">
+            <input type="text" id="ruleInput" placeholder="Sign sequence (e.g., you eat what)" class="lang-select" style="flex:2;">
+            <input type="text" id="correctionInput" placeholder="Corrected sentence (e.g., What are you eating?)" class="lang-select" style="flex:2;">
+            <button id="addRuleBtn" class="btn-outline" style="background:#f59e0b20;">➕ Add Rule</button>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button id="clearRulesBtn" class="action-btn" style="background:#dc262620;">🗑️ Clear Rules</button>
+            <button id="exportRulesBtn" class="action-btn">💾 Export Rules</button>
+            <input type="file" id="importRulesInput" accept=".json" style="display:none;">
+            <button id="importRulesBtn" class="action-btn">📂 Import Rules</button>
+            <button id="testGrammarBtn" class="action-btn">🧪 Test Grammar</button>
+          </div>
+          <div id="grammarStatus" style="color:#f59e0b; font-size:0.75rem; margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- COMMUNITY TAB (extended for grammar rules) -->
       <div id="communityTab" style="display:none;">
         <div style="margin-bottom:12px;">
           <input type="text" id="communitySearch" placeholder="Search models..." class="lang-select" style="width:100%;">
         </div>
-        <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
           <button id="uploadSignsBtn" class="action-btn" style="flex:1;">☁️ Upload Signs</button>
           <button id="uploadPhrasesBtn" class="action-btn" style="flex:1;">☁️ Upload Phrases</button>
+          <button id="uploadRulesBtn" class="action-btn" style="flex:1; background:#f59e0b20;">☁️ Upload Grammar</button>
         </div>
         <div id="communityList" style="max-height:400px; overflow-y:auto;"></div>
       </div>
 
-      <!-- VIDEO CALL TAB (NEW) -->
+      <!-- VIDEO CALL TAB -->
       <div id="callTab" style="display:none;">
         <div class="call-panel">
           <h3 style="color:white; margin-bottom:12px;">Start or Join a Call</h3>
@@ -202,14 +240,14 @@
           <div id="callStatus" style="color:#60a5fa; font-size:0.8rem; margin:12px 0;"></div>
           <video id="remoteVideo" class="remote-video" autoplay playsinline style="display:none;"></video>
           <div id="callTranslation" class="output-box" style="margin-top:12px;">
-            <div class="output-label">CALL TRANSLATION</div>
+            <div class="output-label">CALL TRANSLATION (grammar‑corrected)</div>
             <div class="output-text" id="callTranslationText">Waiting for call...</div>
           </div>
         </div>
       </div>
     </div>
   </div>
-  <footer>© SIGNAID Phase 6 – Real‑time video call with sign ↔ speech translation</footer>
+  <footer>© SIGNAID Phase 7 – AI Grammar Correction | Natural language fluency for sign translation</footer>
 </div>
 
 <script type="module">
@@ -254,6 +292,10 @@
   let lastSignTimestamp = 0;
   const SEQUENCE_TIMEOUT = 1500;
 
+  // Grammar correction rules
+  let grammarRules = []; // each: { input: string (space-separated signs), output: string }
+  let grammarEnabled = true;
+
   // WebRTC
   let peerConnection = null;
   let localStream = null;
@@ -295,6 +337,19 @@
   const phraseStatusDiv = document.getElementById('phraseStatus');
   const lastSequenceSpan = document.getElementById('lastSequence');
 
+  // Grammar elements
+  const rulesContainer = document.getElementById('rulesContainer');
+  const ruleInput = document.getElementById('ruleInput');
+  const correctionInput = document.getElementById('correctionInput');
+  const addRuleBtn = document.getElementById('addRuleBtn');
+  const clearRulesBtn = document.getElementById('clearRulesBtn');
+  const exportRulesBtn = document.getElementById('exportRulesBtn');
+  const importRulesInput = document.getElementById('importRulesInput');
+  const importRulesBtn = document.getElementById('importRulesBtn');
+  const testGrammarBtn = document.getElementById('testGrammarBtn');
+  const grammarStatus = document.getElementById('grammarStatus');
+  const grammarToggle = document.getElementById('grammarToggle');
+
   // Call elements
   const roomIdInput = document.getElementById('roomIdInput');
   const createCallBtn = document.getElementById('createCallBtn');
@@ -309,11 +364,140 @@
   const communityList = document.getElementById('communityList');
   const uploadSignsBtn = document.getElementById('uploadSignsBtn');
   const uploadPhrasesBtn = document.getElementById('uploadPhrasesBtn');
+  const uploadRulesBtn = document.getElementById('uploadRulesBtn');
   const tabs = document.querySelectorAll('.tab');
 
   window.lastLandmarks = { left: null, right: null };
 
-  // ---------- 3D AVATAR (simplified) ----------
+  // ---------- GRAMMAR CORRECTION ENGINE ----------
+  function correctGrammar(signSequenceArray) {
+    if (!grammarEnabled) return signSequenceArray.join(' ');
+    const inputStr = signSequenceArray.join(' ');
+    // First try exact rule match
+    for (let rule of grammarRules) {
+      if (rule.input.toLowerCase() === inputStr.toLowerCase()) {
+        return rule.output;
+      }
+    }
+    // Try partial / fuzzy? For now, simple word reordering (SVO)
+    // Basic: move question words to front, add auxiliary verbs
+    let words = [...signSequenceArray];
+    // Simple heuristics:
+    if (words.includes('what') || words.includes('where') || words.includes('when') || words.includes('why') || words.includes('how')) {
+      const qWord = words.find(w => ['what','where','when','why','how'].includes(w));
+      if (qWord) {
+        words = [qWord, ...words.filter(w => w !== qWord)];
+        // Add 'is/are' if missing
+        if (!words.some(w => w === 'is' || w === 'are' || w === 'do' || w === 'does')) {
+          words.splice(1, 0, 'is');
+        }
+      }
+    }
+    // Capitalize first letter
+    let result = words.join(' ');
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+    return result;
+  }
+
+  // Load/save grammar rules to IndexedDB
+  async function saveGrammarToDB() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('model', 'readwrite');
+    tx.objectStore('model').put({ id: 'grammarRules', rules: grammarRules });
+  }
+  async function loadGrammarFromDB() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('model', 'readonly');
+    const req = tx.objectStore('model').get('grammarRules');
+    req.onsuccess = () => {
+      if (req.result && req.result.rules) {
+        grammarRules = req.result.rules;
+      } else {
+        // Default grammar rules
+        grammarRules = [
+          { input: "you eat what", output: "What are you eating?" },
+          { input: "store you go", output: "Are you going to the store?" },
+          { input: "i hungry", output: "I am hungry" },
+          { input: "she beautiful", output: "She is beautiful" },
+          { input: "they come when", output: "When are they coming?" }
+        ];
+        saveGrammarToDB();
+      }
+      updateRulesUI();
+    };
+  }
+  function updateRulesUI() {
+    rulesContainer.innerHTML = '';
+    grammarRules.forEach((rule, idx) => {
+      const div = document.createElement('div');
+      div.className = 'rule-btn';
+      div.style.display = 'flex';
+      div.style.justifyContent = 'space-between';
+      div.style.alignItems = 'center';
+      div.style.marginBottom = '8px';
+      div.innerHTML = `
+        <span style="flex:1;">📖 "${rule.input}" → "${rule.output}"</span>
+        <button class="delete-rule" data-idx="${idx}" style="background:#dc2626; border:none; border-radius:20px; padding:2px 8px;">❌</button>
+      `;
+      div.querySelector('.delete-rule').onclick = (e) => {
+        e.stopPropagation();
+        grammarRules.splice(idx, 1);
+        saveGrammarToDB();
+        updateRulesUI();
+        grammarStatus.innerText = `Deleted rule.`;
+      };
+      rulesContainer.appendChild(div);
+    });
+  }
+  function addGrammarRule() {
+    const input = ruleInput.value.trim();
+    const output = correctionInput.value.trim();
+    if (!input || !output) { grammarStatus.innerText = 'Fill both fields.'; return; }
+    grammarRules.push({ input, output });
+    saveGrammarToDB();
+    updateRulesUI();
+    ruleInput.value = '';
+    correctionInput.value = '';
+    grammarStatus.innerText = `Rule added: "${input}" → "${output}"`;
+  }
+  function clearGrammarRules() {
+    grammarRules = [];
+    saveGrammarToDB();
+    updateRulesUI();
+    grammarStatus.innerText = 'All grammar rules cleared.';
+  }
+  function exportGrammarRules() {
+    const data = { grammarRules };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'signaid_grammar.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function importGrammarRules(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        grammarRules = data.grammarRules || [];
+        saveGrammarToDB();
+        updateRulesUI();
+        grammarStatus.innerText = 'Grammar rules imported.';
+      } catch(err) { grammarStatus.innerText = 'Invalid file.'; }
+    };
+    reader.readAsText(file);
+  }
+  function testGrammar() {
+    const testInput = prompt('Enter sign sequence (space-separated):', 'you eat what');
+    if (testInput) {
+      const words = testInput.split(' ');
+      const corrected = correctGrammar(words);
+      alert(`Original: ${testInput}\nCorrected: ${corrected}`);
+    }
+  }
+
+  // ---------- 3D AVATAR (same as Phase 6) ----------
   let scene, camera3d, renderer, avatarGroup, leftArm, rightArm;
   function initAvatar() {
     const canvas = document.getElementById('avatarCanvas');
@@ -413,10 +597,10 @@
     return null;
   }
 
-  // ---------- INDEXEDDB ----------
+  // ---------- INDEXEDDB (extended for grammar) ----------
   async function initOfflineDB() {
     return new Promise((resolve) => {
-      const request = indexedDB.open('SIGNAID_Offline', 5);
+      const request = indexedDB.open('SIGNAID_Offline', 6);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('translations')) db.createObjectStore('translations', { keyPath: 'id', autoIncrement: true });
@@ -427,6 +611,7 @@
         offlineDB = e.target.result;
         loadModelFromDB();
         loadPhrasesFromDB();
+        loadGrammarFromDB();
         loadSavedTranslationsCount();
         resolve();
       };
@@ -447,7 +632,7 @@
         signsList = req.result.signsList;
         isTwoHandedModel = req.result.isTwoHanded || false;
         updateSignsUI();
-        trainingStatusDiv.innerText = `✅ Loaded ${Object.keys(trainingSamples).length} signs (${isTwoHandedModel ? '2‑hand' : '1‑hand'}).`;
+        trainingStatusDiv.innerText = `✅ Loaded ${Object.keys(trainingSamples).length} signs.`;
       } else {
         signsList.forEach(s => { if (!trainingSamples[s]) trainingSamples[s] = []; });
         updateSignsUI();
@@ -494,7 +679,7 @@
     tx.oncomplete = () => loadSavedTranslationsCount();
   }
 
-  // ---------- UI: Signs ----------
+  // ---------- UI: Signs (unchanged from Phase 6) ----------
   function updateSignsUI() {
     signsContainer.innerHTML = '';
     signsList.forEach(sign => {
@@ -512,7 +697,7 @@
     if (window.isRecording) return;
     window.isRecording = true;
     tempRecordedVectors = [];
-    trainingStatusDiv.innerText = `🔴 Recording "${sign}" (both hands)... Show sign for 5 sec.`;
+    trainingStatusDiv.innerText = `🔴 Recording "${sign}"... Show sign for 5 sec.`;
     let count = 0;
     recordingTimer = setInterval(() => {
       const left = window.lastLandmarks.left, right = window.lastLandmarks.right;
@@ -567,7 +752,7 @@
     reader.readAsText(file);
   }
 
-  // ---------- Phrases ----------
+  // ---------- Phrases (unchanged) ----------
   function updatePhrasesUI() {
     phrasesContainer.innerHTML = '';
     phrases.forEach(phrase => {
@@ -668,35 +853,43 @@
     reader.readAsText(file);
   }
 
-  // ---------- Sequence matching ----------
+  // ---------- Sequence matching with grammar integration ----------
   function addToRecentSigns(sign) {
     const now = Date.now();
     recentSigns.push({ sign, time: now });
     recentSigns = recentSigns.filter(s => now - s.time < 10000);
     const matched = matchPhrase(recentSigns.map(s => s.sign));
+    let finalOutput = '';
     if (matched) {
-      outputTextDiv.innerText = matched.spoken;
+      finalOutput = matched.spoken;
       confidenceSpan.innerText = `Phrase confidence: high`;
-      liveCaption.innerText = `🔤 Sentence: ${matched.spoken}`;
       lastSequenceSpan.innerText = matched.sequence.join(' → ');
-      if ('speechSynthesis' in window && currentMode !== 'videocall') {
-        const utterance = new SpeechSynthesisUtterance(matched.spoken);
-        utterance.lang = spokenLangSelect.value;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
-      }
-      // If in a call, send the spoken translation to the remote peer
-      if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
-        sendSignTranslation(matched.spoken);
-      }
     } else if (recentSigns.length) {
-      const last = recentSigns[recentSigns.length-1].sign;
-      outputTextDiv.innerText = last;
+      const lastSign = recentSigns[recentSigns.length-1].sign;
+      finalOutput = lastSign;
       confidenceSpan.innerText = `Sign confidence: medium`;
-      liveCaption.innerText = `✋ Sign: ${last}`;
-      if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
-        sendSignTranslation(last);
+      lastSequenceSpan.innerText = lastSign;
+    }
+    // Apply grammar correction if enabled
+    if (grammarEnabled && finalOutput) {
+      const words = finalOutput.split(' ');
+      const corrected = correctGrammar(words);
+      if (corrected !== finalOutput) {
+        finalOutput = corrected;
+        confidenceSpan.innerText += ' (grammar corrected)';
       }
+    }
+    outputTextDiv.innerText = finalOutput;
+    liveCaption.innerText = finalOutput;
+    if ('speechSynthesis' in window && currentMode !== 'videocall') {
+      const utterance = new SpeechSynthesisUtterance(finalOutput);
+      utterance.lang = spokenLangSelect.value;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
+    // If in a call, send the corrected text
+    if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
+      sendSignTranslation(finalOutput);
     }
   }
   function matchPhrase(signsArray) {
@@ -711,16 +904,14 @@
     return null;
   }
 
-  // ---------- WebRTC Signaling via Firestore ----------
+  // ---------- WebRTC Signaling (unchanged) ----------
   async function createCall() {
     const roomId = roomIdInput.value.trim();
     if (!roomId) { callStatusDiv.innerText = 'Enter a room ID first.'; return; }
     currentRoomId = roomId;
     callStatusDiv.innerText = 'Creating room...';
     try {
-      // Get local media
       localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      // Setup peer connection
       peerConnection = new RTCPeerConnection(configuration);
       localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
       peerConnection.ontrack = (event) => {
@@ -738,7 +929,6 @@
           });
         }
       };
-      // Create offer
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
       await db.collection('calls').doc(roomId).set({
@@ -746,7 +936,6 @@
         caller: currentUser?.uid || 'anonymous',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      // Listen for answer
       const unsubscribe = db.collection('calls').doc(roomId).collection('signals')
         .where('type', '==', 'answer').onSnapshot(snapshot => {
           snapshot.docChanges().forEach(async (change) => {
@@ -807,7 +996,6 @@
       hangupBtn.style.display = 'inline-block';
       createCallBtn.disabled = true;
       joinCallBtn.disabled = true;
-      // Listen for ICE candidates
       db.collection('calls').doc(roomId).collection('signals')
         .where('candidate', '!=', null).onSnapshot(snapshot => {
           snapshot.docChanges().forEach(async (change) => {
@@ -838,33 +1026,27 @@
     createCallBtn.disabled = false;
     joinCallBtn.disabled = false;
     if (currentRoomId) {
-      // Optionally clean up Firestore documents
-      const ref = db.collection('calls').doc(currentRoomId);
-      await ref.delete().catch(()=>{});
+      await db.collection('calls').doc(currentRoomId).delete().catch(()=>{});
       currentRoomId = null;
     }
   }
   function sendSignTranslation(text) {
     if (!peerConnection) return;
-    // Send via data channel (simple)
-    if (peerConnection.connectionState === 'connected') {
-      const dataChannel = peerConnection.createDataChannel('translation');
-      dataChannel.onopen = () => dataChannel.send(JSON.stringify({ text, timestamp: Date.now() }));
-      dataChannel.onmessage = (e) => {
-        const data = JSON.parse(e.data);
-        callTranslationText.innerText = `Remote: ${data.text}`;
-        // Also speak it locally
-        if ('speechSynthesis' in window) {
-          const utterance = new SpeechSynthesisUtterance(data.text);
-          utterance.lang = spokenLangSelect.value;
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(utterance);
-        }
-      };
-    }
+    const dataChannel = peerConnection.createDataChannel('translation');
+    dataChannel.onopen = () => dataChannel.send(JSON.stringify({ text, timestamp: Date.now() }));
+    dataChannel.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      callTranslationText.innerText = `Remote: ${data.text}`;
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(data.text);
+        utterance.lang = spokenLangSelect.value;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      }
+    };
   }
 
-  // ---------- MEDIAPIPE HANDS (with phrase matching and call integration) ----------
+  // ---------- MEDIAPIPE HANDS (with phrase matching and grammar) ----------
   async function initHandTracking() {
     hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
@@ -889,23 +1071,8 @@
           if (result) {
             inputTextDiv.innerText = result.sign;
             confidenceSpan.innerText = `Confidence: ${(result.confidence*100).toFixed(0)}%`;
-            if (currentMode === 'sign2speech') {
-              outputTextDiv.innerText = result.sign;
-              liveCaption.innerText = `✋ Recognized: ${result.sign}`;
-              animateSign(result.sign);
-              if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(result.sign);
-                utterance.lang = spokenLangSelect.value;
-                window.speechSynthesis.cancel();
-                window.speechSynthesis.speak(utterance);
-              }
-            }
-            // For phrase matching (always active)
             addToRecentSigns(result.sign);
-            // For video call, also send to remote peer if in call mode
-            if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
-              // The phrase matcher already sends via addToRecentSigns, but we also send single signs
-            }
+            animateSign(result.sign);
           } else {
             inputTextDiv.innerText = '?';
             confidenceSpan.innerText = 'Confidence: low';
@@ -995,7 +1162,6 @@
     } else if (mode === 'videocall') {
       micBtn.disabled = true;
       if (micActive) startMicrophone();
-      // Switch to Call tab automatically
       document.querySelector('[data-tab="call"]').click();
     }
   }
@@ -1017,8 +1183,15 @@
   createCallBtn.onclick = createCall;
   joinCallBtn.onclick = joinCall;
   hangupBtn.onclick = hangupCall;
+  grammarToggle.onchange = (e) => { grammarEnabled = e.target.checked; grammarStatus.innerText = grammarEnabled ? 'Grammar correction ON' : 'Grammar correction OFF'; };
+  addRuleBtn.onclick = addGrammarRule;
+  clearRulesBtn.onclick = clearGrammarRules;
+  exportRulesBtn.onclick = exportGrammarRules;
+  importRulesBtn.onclick = () => importRulesInput.click();
+  importRulesInput.onchange = (e) => { if (e.target.files.length) importGrammarRules(e.target.files[0]); };
+  testGrammarBtn.onclick = testGrammar;
 
-  // ---------- Community ----------
+  // ---------- Community (extended for grammar) ----------
   uploadSignsBtn.onclick = async () => {
     if (!currentUser) { alert('Sign in to upload.'); return; }
     const name = prompt('Model name', 'My Signs');
@@ -1050,6 +1223,22 @@
       });
       phraseStatusDiv.innerText = 'Phrases uploaded!';
     } catch(err) { phraseStatusDiv.innerText = 'Upload failed.'; }
+  };
+  uploadRulesBtn.onclick = async () => {
+    if (!currentUser) { alert('Sign in to upload.'); return; }
+    const name = prompt('Grammar model name', 'My Grammar Rules');
+    if (!name) return;
+    const desc = prompt('Description', 'Grammar correction rules');
+    try {
+      await db.collection('community_models').add({
+        type: 'grammar', name, description: desc,
+        signLanguage: document.getElementById('signLang').value,
+        modelData: JSON.stringify({ grammarRules }),
+        uploaderUid: currentUser.uid, downloads: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      grammarStatus.innerText = 'Grammar rules uploaded!';
+    } catch(err) { grammarStatus.innerText = 'Upload failed.'; }
   };
   async function loadCommunityModels(searchTerm = '') {
     communityList.innerHTML = '<div>Loading...</div>';
@@ -1093,6 +1282,11 @@
             await savePhrasesToDB();
             updatePhrasesUI();
             phraseStatusDiv.innerText = `Downloaded phrases "${data.name}".`;
+          } else if (type === 'grammar') {
+            grammarRules = modelData.grammarRules || [];
+            await saveGrammarToDB();
+            updateRulesUI();
+            grammarStatus.innerText = `Downloaded grammar rules "${data.name}".`;
           }
           await db.collection('community_models').doc(id).update({ downloads: firebase.firestore.FieldValue.increment(1) });
           document.querySelector('[data-tab="local"]').click();
@@ -1111,6 +1305,7 @@
       const target = tab.getAttribute('data-tab');
       document.getElementById('localTab').style.display = target === 'local' ? 'block' : 'none';
       document.getElementById('phrasesTab').style.display = target === 'phrases' ? 'block' : 'none';
+      document.getElementById('grammarTab').style.display = target === 'grammar' ? 'block' : 'none';
       document.getElementById('communityTab').style.display = target === 'community' ? 'block' : 'none';
       document.getElementById('callTab').style.display = target === 'call' ? 'block' : 'none';
       if (target === 'community') loadCommunityModels();
