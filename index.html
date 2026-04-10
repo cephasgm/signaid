@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>SIGNAID – Community Sign Models</title>
+  <title>SIGNAID – Two‑Handed Sign Recognition</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2563eb">
   <!-- Three.js -->
@@ -37,6 +37,7 @@
     .avatar-container { position:relative; aspect-ratio:4/3; background:#0a0f1e; border-radius:24px; overflow:hidden; margin-bottom:16px; }
     #avatarCanvas { width:100%; height:100%; display:block; background:#111827; }
     .caption { position:absolute; bottom:12px; left:12px; right:12px; background:rgba(0,0,0,0.6); backdrop-filter:blur(8px); padding:8px 16px; border-radius:40px; text-align:center; color:white; font-weight:500; }
+    .hand-status { position:absolute; top:12px; right:12px; background:rgba(0,0,0,0.5); border-radius:20px; padding:4px 12px; font-size:0.7rem; color:#60a5fa; }
     .language-row { display:flex; gap:12px; margin:16px 0; flex-wrap:wrap; }
     .lang-select { flex:1; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.2); border-radius:40px; padding:10px 16px; color:white; }
     .mode-tabs { display:flex; gap:8px; margin:16px 0; }
@@ -82,6 +83,7 @@
       <div class="avatar-container">
         <canvas id="avatarCanvas"></canvas>
         <div class="caption" id="liveCaption">🤟 Ready</div>
+        <div class="hand-status" id="handStatus">🖐️ 0 hands</div>
       </div>
       <div class="language-row">
         <select id="spokenLang" class="lang-select">
@@ -128,7 +130,7 @@
         </div>
 
         <div class="training-section">
-          <h3 style="color:white; font-size:1rem; margin:16px 0 8px;">📖 Train Your Signs</h3>
+          <h3 style="color:white; font-size:1rem; margin:16px 0 8px;">📖 Train Your Signs (Two‑Handed)</h3>
           <div id="signsContainer" class="sign-buttons"></div>
           <div style="display:flex; gap:8px; margin:12px 0;">
             <input type="text" id="newSignName" placeholder="New sign (e.g., coffee)" class="lang-select" style="flex:2;">
@@ -157,7 +159,7 @@
       </div>
     </div>
   </div>
-  <footer>© SIGNAID – Train, share, and download community sign models. All data synced via Firestore.</footer>
+  <footer>© SIGNAID – Two‑handed sign recognition | Train both hands together | Share models</footer>
 </div>
 
 <script type="module">
@@ -187,9 +189,10 @@
   let currentUser = null;
   let offlineDB = null;
 
-  // KNN model
-  let trainingSamples = {};
+  // KNN model storage (supports both 1-hand and 2-hand)
+  let trainingSamples = {};      // { sign: [vector] }
   let signsList = ['hello', 'thank you', 'yes', 'no', 'please', 'goodbye'];
+  let isTwoHandedModel = false;  // auto-detected from first sample
 
   // Recording state
   let isRecording = false;
@@ -207,6 +210,7 @@
   const outputTextDiv = document.getElementById('outputText');
   const confidenceSpan = document.getElementById('confidence');
   const liveCaption = document.getElementById('liveCaption');
+  const handStatusSpan = document.getElementById('handStatus');
   const saveBtn = document.getElementById('saveTranslationBtn');
   const offlineCountSpan = document.getElementById('offlineCount');
   const spokenLangSelect = document.getElementById('spokenLang');
@@ -223,9 +227,9 @@
   const communityList = document.getElementById('communityList');
   const tabs = document.querySelectorAll('.tab');
 
-  window.lastLandmarks = null;
+  window.lastLandmarks = { left: null, right: null };
 
-  // ---------- 3D AVATAR ----------
+  // ---------- 3D AVATAR (unchanged) ----------
   let scene, camera3d, renderer, avatarGroup, leftArm, rightArm;
   function initAvatar() {
     const canvas = document.getElementById('avatarCanvas');
@@ -299,32 +303,57 @@
     requestAnimationFrame(step);
   }
 
-  // ---------- KNN CLASSIFIER ----------
-  function getLandmarkVector(landmarks) {
-    let vec = [];
-    for (let lm of landmarks) vec.push(lm.x, lm.y, lm.z);
-    return vec;
+  // ---------- TWO‑HANDED LANDMARK EXTRACTION ----------
+  function getLandmarkVectorFromHands(leftHand, rightHand) {
+    // If only one hand is present, pad with zeros for the missing hand
+    const leftVec = leftHand ? leftHand.flatMap(lm => [lm.x, lm.y, lm.z]) : Array(63).fill(0);
+    const rightVec = rightHand ? rightHand.flatMap(lm => [lm.x, lm.y, lm.z]) : Array(63).fill(0);
+    return [...leftVec, ...rightVec]; // 126 features
   }
-  function classifyLandmarks(landmarks) {
+
+  function getLandmarkVectorLegacy(landmarks) {
+    // Single hand (63 features) – for backward compatibility
+    return landmarks.flatMap(lm => [lm.x, lm.y, lm.z]);
+  }
+
+  function getFeatureVector(leftHand, rightHand) {
+    // If we have both hands or at least one, use two-handed format (126)
+    if (leftHand || rightHand) {
+      return getLandmarkVectorFromHands(leftHand, rightHand);
+    }
+    return null;
+  }
+
+  // ---------- KNN CLASSIFIER (auto‑detects model type) ----------
+  function classifyFeatures(features) {
     if (Object.keys(trainingSamples).length === 0) return null;
-    const inputVec = getLandmarkVector(landmarks);
     let bestSign = null, bestDist = Infinity;
     for (let [sign, samples] of Object.entries(trainingSamples)) {
       for (let sample of samples) {
+        // Ensure same length
+        const len = Math.min(features.length, sample.length);
         let dist = 0;
-        for (let i = 0; i < inputVec.length; i++) dist += (inputVec[i] - sample[i]) ** 2;
+        for (let i = 0; i < len; i++) {
+          dist += (features[i] - sample[i]) ** 2;
+        }
         dist = Math.sqrt(dist);
-        if (dist < bestDist) { bestDist = dist; bestSign = sign; }
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestSign = sign;
+        }
       }
     }
-    if (bestDist < 0.65) return { sign: bestSign, confidence: Math.max(0, 1 - bestDist / 1.2) };
+    if (bestDist < 0.7) {
+      let confidence = Math.max(0, 1 - bestDist / 1.4);
+      return { sign: bestSign, confidence };
+    }
     return null;
   }
 
   // ---------- INDEXEDDB (local model + translations) ----------
   async function initOfflineDB() {
     return new Promise((resolve) => {
-      const request = indexedDB.open('SIGNAID_Offline', 2);
+      const request = indexedDB.open('SIGNAID_Offline', 3);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('translations')) db.createObjectStore('translations', { keyPath: 'id', autoIncrement: true });
@@ -336,13 +365,13 @@
         loadSavedTranslationsCount();
         resolve();
       };
-      request.onerror = () => resolve(); // fallback
+      request.onerror = () => resolve();
     });
   }
   async function saveModelToDB() {
     if (!offlineDB) return;
     const tx = offlineDB.transaction('model', 'readwrite');
-    tx.objectStore('model').put({ id: 'knnModel', samples: trainingSamples, signsList: signsList });
+    tx.objectStore('model').put({ id: 'knnModel', samples: trainingSamples, signsList: signsList, isTwoHanded: isTwoHandedModel });
   }
   async function loadModelFromDB() {
     if (!offlineDB) return;
@@ -352,8 +381,9 @@
       if (req.result) {
         trainingSamples = req.result.samples;
         signsList = req.result.signsList;
+        isTwoHandedModel = req.result.isTwoHanded || false;
         updateSignsUI();
-        trainingStatusDiv.innerText = `✅ Loaded ${Object.keys(trainingSamples).length} signs locally.`;
+        trainingStatusDiv.innerText = `✅ Loaded ${Object.keys(trainingSamples).length} signs (${isTwoHandedModel ? 'two‑handed' : 'one‑handed'}).`;
       } else {
         signsList.forEach(s => { if (!trainingSamples[s]) trainingSamples[s] = []; });
         updateSignsUI();
@@ -373,7 +403,7 @@
     tx.oncomplete = () => loadSavedTranslationsCount();
   }
 
-  // ---------- UI: Training buttons ----------
+  // ---------- UI: Training buttons (record both hands) ----------
   function updateSignsUI() {
     signsContainer.innerHTML = '';
     signsList.forEach(sign => {
@@ -390,20 +420,31 @@
     isRecording = true;
     currentRecordingSign = sign;
     tempRecordedVectors = [];
-    trainingStatusDiv.innerText = `🔴 Recording "${sign}"... Show sign for 5 seconds.`;
+    trainingStatusDiv.innerText = `🔴 Recording "${sign}" (both hands)... Show sign for 5 seconds.`;
     let count = 0;
     recordingTimer = setInterval(() => {
-      if (!window.lastLandmarks) { trainingStatusDiv.innerText = `⚠️ No hand detected.`; return; }
-      const vec = getLandmarkVector(window.lastLandmarks);
-      tempRecordedVectors.push(vec);
-      count++;
-      trainingStatusDiv.innerText = `🔴 Recording "${sign}"... ${count}/10 samples.`;
+      const left = window.lastLandmarks.left;
+      const right = window.lastLandmarks.right;
+      if (!left && !right) {
+        trainingStatusDiv.innerText = `⚠️ No hands detected. Both hands needed for two‑handed model.`;
+        return;
+      }
+      const features = getFeatureVector(left, right);
+      if (features) {
+        tempRecordedVectors.push(features);
+        count++;
+        trainingStatusDiv.innerText = `🔴 Recording "${sign}"... ${count}/10 samples.`;
+      } else {
+        trainingStatusDiv.innerText = `⚠️ Could not extract landmarks.`;
+      }
       if (count >= 10) {
         clearInterval(recordingTimer);
         if (!trainingSamples[sign]) trainingSamples[sign] = [];
         trainingSamples[sign].push(...tempRecordedVectors);
+        // Set two-handed flag if any sample length > 63
+        if (tempRecordedVectors.some(v => v.length > 63)) isTwoHandedModel = true;
         saveModelToDB();
-        trainingStatusDiv.innerText = `✅ Added ${tempRecordedVectors.length} samples for "${sign}".`;
+        trainingStatusDiv.innerText = `✅ Added ${tempRecordedVectors.length} samples for "${sign}". Model is now ${isTwoHandedModel ? 'two‑handed' : 'one‑handed'}.`;
         isRecording = false;
       }
     }, 500);
@@ -411,17 +452,18 @@
   function clearModel() {
     trainingSamples = {};
     signsList.forEach(s => trainingSamples[s] = []);
+    isTwoHandedModel = false;
     saveModelToDB();
     updateSignsUI();
     trainingStatusDiv.innerText = '🗑️ Model cleared.';
   }
   function exportModel() {
-    const data = { trainingSamples, signsList };
+    const data = { trainingSamples, signsList, isTwoHanded: isTwoHandedModel };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'signaid_model.json';
+    a.download = 'signaid_model_2hand.json';
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -432,23 +474,24 @@
         const data = JSON.parse(e.target.result);
         trainingSamples = data.trainingSamples;
         signsList = data.signsList;
+        isTwoHandedModel = data.isTwoHanded || false;
         saveModelToDB();
         updateSignsUI();
-        trainingStatusDiv.innerText = '✅ Model imported.';
+        trainingStatusDiv.innerText = `✅ Model imported (${isTwoHandedModel ? 'two‑handed' : 'one‑handed'}).`;
       } catch(err) { trainingStatusDiv.innerText = '❌ Invalid file.'; }
     };
     reader.readAsText(file);
   }
 
-  // ---------- PHASE 3: FIRESTORE SYNC ----------
+  // ---------- PHASE 3: FIRESTORE SYNC (updated to store two‑handed flag) ----------
   async function uploadModelToCommunity() {
     if (!currentUser) { alert('Please sign in to upload.'); return; }
     if (Object.keys(trainingSamples).length === 0) { alert('No trained samples to upload.'); return; }
-    const modelName = prompt('Give your model a name (e.g., "My ASL signs")', 'My Model');
+    const modelName = prompt('Give your model a name (e.g., "My Two‑Handed ASL")', 'My Model');
     if (!modelName) return;
-    const description = prompt('Short description', 'Trained with SIGNAID');
+    const description = prompt('Short description', 'Trained with SIGNAID Phase 4 (two‑handed)');
     const signLang = document.getElementById('signLang').value;
-    const modelData = { trainingSamples, signsList };
+    const modelData = { trainingSamples, signsList, isTwoHanded: isTwoHandedModel };
     try {
       await db.collection('community_models').add({
         name: modelName,
@@ -499,7 +542,7 @@
       });
     } catch (err) {
       console.error(err);
-      communityList.innerHTML = '<div style="color:#ef4444;">Failed to load community models. Make sure Firestore is enabled.</div>';
+      communityList.innerHTML = '<div style="color:#ef4444;">Failed to load community models.</div>';
     }
   }
   async function downloadModel(docId) {
@@ -510,11 +553,11 @@
       const modelData = JSON.parse(data.modelData);
       trainingSamples = modelData.trainingSamples;
       signsList = modelData.signsList;
+      isTwoHandedModel = modelData.isTwoHanded || false;
       await saveModelToDB();
       updateSignsUI();
-      trainingStatusDiv.innerText = `✅ Downloaded "${data.name}". Model ready.`;
+      trainingStatusDiv.innerText = `✅ Downloaded "${data.name}" (${isTwoHandedModel ? 'two‑handed' : 'one‑handed'}).`;
       await db.collection('community_models').doc(docId).update({ downloads: firebase.firestore.FieldValue.increment(1) });
-      // Switch to local tab
       document.querySelector('[data-tab="local"]').click();
     } catch (err) {
       console.error(err);
@@ -523,17 +566,35 @@
   }
   function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
-  // ---------- MEDIAPIPE HANDS ----------
+  // ---------- MEDIAPIPE HANDS (TWO‑HAND TRACKING) ----------
   async function initHandTracking() {
     hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
-    hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
     hands.onResults((results) => {
       if (!cameraActive) return;
+      // Separate left and right hands (MediaPipe provides handedness)
+      let leftHand = null, rightHand = null;
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-        const landmarks = results.multiHandLandmarks[0];
-        window.lastLandmarks = landmarks;
-        if (currentMode === 'sign2speech') {
-          const result = classifyLandmarks(landmarks);
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const landmarks = results.multiHandLandmarks[i];
+          const handedness = results.multiHandedness[i].label;
+          if (handedness === 'Left') leftHand = landmarks;
+          else rightHand = landmarks;
+        }
+      }
+      window.lastLandmarks = { left: leftHand, right: rightHand };
+      const handCount = (leftHand ? 1 : 0) + (rightHand ? 1 : 0);
+      handStatusSpan.innerText = handCount === 1 ? '🖐️ 1 hand' : handCount === 2 ? '🖐️🖐️ 2 hands' : '✋ 0 hands';
+
+      if (currentMode === 'sign2speech') {
+        const features = getFeatureVector(leftHand, rightHand);
+        if (features) {
+          const result = classifyFeatures(features);
           if (result) {
             inputTextDiv.innerText = result.sign;
             confidenceSpan.innerText = `Confidence: ${(result.confidence*100).toFixed(0)}%`;
@@ -550,9 +611,10 @@
             inputTextDiv.innerText = '?';
             confidenceSpan.innerText = 'Confidence: low';
           }
+        } else {
+          inputTextDiv.innerText = '—';
+          confidenceSpan.innerText = 'Confidence: —';
         }
-      } else {
-        if (currentMode === 'sign2speech') { inputTextDiv.innerText = '—'; confidenceSpan.innerText = 'Confidence: —'; }
       }
     });
   }
@@ -572,12 +634,9 @@
       const videoElement = document.createElement('video');
       videoElement.srcObject = stream;
       videoElement.play();
-      // Wait a bit for video to be ready
       await new Promise(r => setTimeout(r, 100));
       cameraUtils = new Camera(videoElement, {
-        onFrame: async () => {
-          await hands.send({ image: videoElement });
-        },
+        onFrame: async () => { await hands.send({ image: videoElement }); },
         width: 640,
         height: 480
       });
@@ -585,16 +644,15 @@
       cameraActive = true;
       cameraBtn.innerText = '📷 Stop Camera';
       cameraBtn.classList.add('active');
-      liveCaption.innerText = 'Camera on – show trained signs';
+      liveCaption.innerText = 'Camera on – use one or two hands';
     } catch(err) {
-      console.error(err);
-      alert('Camera permission denied or error: ' + err.message);
+      alert('Camera error: ' + err.message);
     }
   }
 
-  // ---------- SPEECH RECOGNITION ----------
+  // ---------- SPEECH RECOGNITION (unchanged) ----------
   function startMicrophone() {
-    if (!('webkitSpeechRecognition' in window)) { alert('Speech recognition not supported in this browser.'); return; }
+    if (!('webkitSpeechRecognition' in window)) { alert('Speech recognition not supported.'); return; }
     if (micActive) {
       recognition.stop();
       micActive = false;
@@ -625,10 +683,7 @@
         liveCaption.innerText = `🤟 Sign: ${found}`;
       }
     };
-    recognition.onerror = (e) => {
-      console.error(e);
-      if (micActive) startMicrophone(); // restart on error
-    };
+    recognition.onerror = () => { if (micActive) startMicrophone(); };
     recognition.start();
   }
 
@@ -639,7 +694,7 @@
     if (mode === 'sign2speech') {
       document.querySelector('[data-mode="sign2speech"]').classList.add('active');
       micBtn.disabled = true;
-      if (micActive) startMicrophone(); // turn off mic if active
+      if (micActive) startMicrophone();
     } else {
       document.querySelector('[data-mode="speech2sign"]').classList.add('active');
       micBtn.disabled = false;
