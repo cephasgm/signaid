@@ -199,7 +199,6 @@
   </div>
 
   <script>
-    // Firebase Configuration
     const firebaseConfig = {
       apiKey: "AIzaSyBsewmLbx9LzzlhC-xzm8KPN9g-2zZFa0M",
       authDomain: "signaid-app.firebaseapp.com",
@@ -210,11 +209,9 @@
       measurementId: "G-J9Q2JRS6WX"
     };
 
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
 
-    // Switch between login and signup
     window.switchTab = (tab) => {
       if (tab === 'login') {
         document.getElementById('loginTab').classList.add('active');
@@ -230,7 +227,6 @@
       clearMessage();
     };
 
-    // Show message
     const showMessage = (text, isError = true) => {
       const container = document.getElementById('messageContainer');
       container.innerHTML = `<div class="${isError ? 'error' : 'success'}">${text}</div>`;
@@ -240,7 +236,6 @@
       document.getElementById('messageContainer').innerHTML = '';
     };
 
-    // Handle Login
     window.handleLogin = async () => {
       const email = document.getElementById('loginEmail').value;
       const password = document.getElementById('loginPassword').value;
@@ -251,17 +246,17 @@
       }
 
       try {
-        const result = await auth.signInWithEmailAndPassword(email, password);
+        await auth.signInWithEmailAndPassword(email, password);
         showMessage('Login successful! Redirecting...', false);
         setTimeout(() => {
-          window.location.href = '/';
+          // ✅ FIX: redirect to the main app in the same directory (./)
+          window.location.href = './';
         }, 1500);
       } catch (error) {
         showMessage(error.message);
       }
     };
 
-    // Handle Signup
     window.handleSignup = async () => {
       const name = document.getElementById('signupName').value;
       const email = document.getElementById('signupEmail').value;
@@ -288,14 +283,13 @@
         await result.user.updateProfile({ displayName: name });
         showMessage('Account created! Redirecting...', false);
         setTimeout(() => {
-          window.location.href = '/';
+          window.location.href = './';
         }, 1500);
       } catch (error) {
         showMessage(error.message);
       }
     };
 
-    // Reset Password
     window.resetPassword = async () => {
       const email = document.getElementById('loginEmail').value;
       if (!email) {
@@ -311,14 +305,12 @@
       }
     };
 
-    // Check auth state
+    // If already logged in, redirect to main app
     auth.onAuthStateChanged((user) => {
-      if (user && window.location.pathname !== '/') {
-        // Already logged in, redirect to main app
-        window.location.href = '/';
+      if (user && window.location.pathname !== './') {
+        window.location.href = './';
       }
     });
   </script>
 </body>
 </html>
-
