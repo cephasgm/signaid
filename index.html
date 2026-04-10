@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>SIGNAID – Global Sign Language Bridge</title>
+  <title>SIGNAID – Trainable Sign Language Bridge</title>
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <!-- Three.js for 3D avatar -->
+  <!-- Three.js for avatar -->
   <script type="importmap">
     {
       "imports": {
@@ -48,10 +48,15 @@
     .output-label { font-size:0.75rem; color:#94a3b8; text-transform:uppercase; }
     .output-text { font-size:1.5rem; font-weight:600; color:white; word-break:break-word; }
     .confidence { font-size:0.8rem; color:#10b981; margin-top:8px; }
-    .action-buttons { display:flex; gap:12px; margin-top:20px; }
+    .action-buttons { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; }
     .action-btn { flex:1; display:flex; align-items:center; justify-content:center; gap:8px; background:rgba(37,99,235,0.2); border:1px solid #2563eb; }
     .action-btn.active { background:#2563eb; }
     .status-badge { display:inline-block; background:#10b98120; color:#10b981; border-radius:20px; padding:4px 12px; font-size:0.75rem; margin-left:8px; }
+    .training-section { margin-top:20px; }
+    .sign-buttons { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0; }
+    .sign-btn { background:rgba(37,99,235,0.3); border:1px solid #2563eb; padding:6px 12px; border-radius:30px; font-size:0.8rem; }
+    .sign-btn.recording { background:#dc2626; border-color:#dc2626; animation:pulse 1s infinite; }
+    @keyframes pulse { 0% { opacity:1; } 50% { opacity:0.6; } }
     footer { text-align:center; margin-top:32px; color:#64748b; font-size:0.75rem; }
   </style>
 </head>
@@ -67,7 +72,7 @@
   </nav>
 
   <div class="main-grid">
-    <!-- Left: Avatar + Camera feed overlay -->
+    <!-- Left: Avatar + Camera feed -->
     <div class="panel">
       <div class="avatar-container">
         <canvas id="avatarCanvas"></canvas>
@@ -83,7 +88,6 @@
         <select id="signLang" class="lang-select">
           <option value="asl">ASL (American)</option>
           <option value="bsl">BSL (British)</option>
-          <option value="lsf">LSF (French)</option>
         </select>
       </div>
       <div class="mode-tabs">
@@ -96,7 +100,7 @@
       </div>
     </div>
 
-    <!-- Right: Translation output -->
+    <!-- Right: Translation + Training -->
     <div class="panel">
       <div class="output-box">
         <div class="output-label">INPUT (recognized)</div>
@@ -107,22 +111,38 @@
         <div class="output-text" id="outputText">—</div>
         <div class="confidence" id="confidence">Confidence: —</div>
       </div>
-      <div style="margin-top:20px;">
-        <button id="saveTranslationBtn" class="btn-outline" style="width:100%;">💾 Save translation (offline)</button>
+      <div class="action-buttons" style="margin-top:12px;">
+        <button id="saveTranslationBtn" class="btn-outline" style="flex:1;">💾 Save offline</button>
       </div>
-      <div style="margin-top:16px;">
-        <p style="color:#94a3b8; font-size:0.75rem;">📚 Offline signs stored: <span id="offlineCount">0</span></p>
+
+      <!-- TRAINING SECTION (Phase 2) -->
+      <div class="training-section">
+        <h3 style="color:white; font-size:1rem; margin:16px 0 8px;">📖 Train Your Signs</h3>
+        <div id="signsContainer" class="sign-buttons"></div>
+        <div style="display:flex; gap:8px; margin:12px 0;">
+          <input type="text" id="newSignName" placeholder="New sign (e.g., coffee)" class="lang-select" style="flex:2;">
+          <button id="addSignBtn" class="btn-outline">➕ Add</button>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button id="clearModelBtn" class="action-btn" style="background:#dc262620;">🗑️ Clear Model</button>
+          <button id="exportModelBtn" class="action-btn">💾 Export Model</button>
+          <input type="file" id="importModelInput" accept=".json" style="display:none;">
+          <button id="importModelBtn" class="action-btn">📂 Import Model</button>
+        </div>
+        <div id="trainingStatus" style="color:#60a5fa; font-size:0.75rem; margin-top:12px;"></div>
+        <div style="margin-top:12px;">
+          <p style="color:#94a3b8; font-size:0.7rem;">📚 Offline translations: <span id="offlineCount">0</span></p>
+        </div>
       </div>
     </div>
   </div>
-  <footer>© SIGNAID – Real sign language recognition using MediaPipe + KNN | Works offline</footer>
+  <footer>© SIGNAID – Train your own signs using camera. Model saved offline.</footer>
 </div>
 
 <script type="module">
-  // ---------- IMPORTS ----------
   import * as THREE from 'three';
 
-  // ---------- FIREBASE INIT (your config) ----------
+  // ---------- FIREBASE (your config) ----------
   const firebaseConfig = {
     apiKey: "AIzaSyBsewmLbx9LzzlhC-xzm8KPN9g-2zZFa0M",
     authDomain: "signaid-app.firebaseapp.com",
@@ -133,10 +153,9 @@
   };
   firebase.initializeApp(firebaseConfig);
   const auth = firebase.auth();
-  const db = firebase.firestore();
 
   // ---------- GLOBALS ----------
-  let currentMode = 'sign2speech';   // 'sign2speech' or 'speech2sign'
+  let currentMode = 'sign2speech';
   let cameraActive = false;
   let micActive = false;
   let videoStream = null;
@@ -144,20 +163,17 @@
   let cameraUtils = null;
   let recognition = null;
   let currentUser = null;
-  
-  // 3D avatar
-  let scene, camera, renderer, avatarGroup;
-  let leftArm, rightArm, head;
-
-  // KNN classifier for signs (using hand landmarks)
-  let knnClassifier = null;
-  let landmarksHistory = [];
-  const SIGN_LABELS = ['hello', 'thank you', 'yes', 'no', 'please', 'goodbye'];
-  let trainingSamples = {};  // { label: [landmarkArrays] }
-
-  // Offline storage (IndexedDB)
   let offlineDB = null;
-  let savedTranslations = [];
+
+  // KNN model storage
+  let trainingSamples = {};     // { "hello": [ [landmarkVec], ... ] }
+  let signsList = ['hello', 'thank you', 'yes', 'no', 'please', 'goodbye'];
+  
+  // Recording state
+  let isRecording = false;
+  let currentRecordingSign = null;
+  let recordingTimer = null;
+  let tempRecordedVectors = [];
 
   // DOM elements
   const loginBtn = document.getElementById('loginBtn');
@@ -172,78 +188,75 @@
   const saveBtn = document.getElementById('saveTranslationBtn');
   const offlineCountSpan = document.getElementById('offlineCount');
   const spokenLangSelect = document.getElementById('spokenLang');
-  const signLangSelect = document.getElementById('signLang');
+  const signsContainer = document.getElementById('signsContainer');
+  const trainingStatusDiv = document.getElementById('trainingStatus');
+  const newSignInput = document.getElementById('newSignName');
+  const addSignBtn = document.getElementById('addSignBtn');
+  const clearModelBtn = document.getElementById('clearModelBtn');
+  const exportModelBtn = document.getElementById('exportModelBtn');
+  const importModelBtn = document.getElementById('importModelBtn');
+  const importModelInput = document.getElementById('importModelInput');
 
-  // ---------- 3D AVATAR SETUP ----------
+  // Store latest landmarks for training
+  window.lastLandmarks = null;
+
+  // ---------- 3D AVATAR (simplified) ----------
+  let scene, camera3d, renderer, avatarGroup, leftArm, rightArm;
   function initAvatar() {
     const canvas = document.getElementById('avatarCanvas');
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111827);
-    camera = new THREE.PerspectiveCamera(45, width/height, 0.1, 1000);
-    camera.position.set(0, 1.5, 3);
-    camera.lookAt(0, 1, 0);
+    camera3d = new THREE.PerspectiveCamera(45, width/height, 0.1, 1000);
+    camera3d.position.set(0, 1.5, 3);
     renderer = new THREE.WebGLRenderer({ canvas, alpha: false });
     renderer.setSize(width, height);
-    
-    // Lights
     const ambient = new THREE.AmbientLight(0x404060);
     scene.add(ambient);
-    const mainLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    mainLight.position.set(2, 3, 2);
-    scene.add(mainLight);
-    
-    // Simple avatar: body + head + arms
+    const light = new THREE.DirectionalLight(0xffffff, 0.8);
+    light.position.set(2, 3, 2);
+    scene.add(light);
     avatarGroup = new THREE.Group();
     const bodyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.2, 8);
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.position.y = 0.6;
     avatarGroup.add(body);
-    
     const headGeo = new THREE.SphereGeometry(0.4, 32);
     const headMat = new THREE.MeshStandardMaterial({ color: 0xfcd34d });
-    head = new THREE.Mesh(headGeo, headMat);
+    const head = new THREE.Mesh(headGeo, headMat);
     head.position.y = 1.2;
     avatarGroup.add(head);
-    
     const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.8);
     const armMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
     leftArm = new THREE.Mesh(armGeo, armMat);
     leftArm.position.set(-0.6, 1.0, 0);
     leftArm.rotation.z = 0.3;
     avatarGroup.add(leftArm);
-    
     rightArm = new THREE.Mesh(armGeo, armMat);
     rightArm.position.set(0.6, 1.0, 0);
     rightArm.rotation.z = -0.3;
     avatarGroup.add(rightArm);
-    
     scene.add(avatarGroup);
-    
     function animate() {
       requestAnimationFrame(animate);
-      renderer.render(scene, camera);
+      renderer.render(scene, camera3d);
     }
     animate();
     window.addEventListener('resize', () => {
       const w = canvas.clientWidth, h = canvas.clientHeight;
       renderer.setSize(w, h);
-      camera.aspect = w/h;
-      camera.updateProjectionMatrix();
+      camera3d.aspect = w/h;
+      camera3d.updateProjectionMatrix();
     });
   }
-  
-  // Animate avatar performing a sign (simple arm wave)
   function animateSign(signWord) {
     if (!leftArm || !rightArm) return;
-    // Simple animation based on sign
     let intensity = 0.5;
     if (signWord === 'hello') intensity = 0.8;
     else if (signWord === 'thank you') intensity = 0.6;
     else intensity = 0.4;
-    
     let start = null;
     function step(timestamp) {
       if (!start) start = timestamp;
@@ -260,8 +273,185 @@
     }
     requestAnimationFrame(step);
   }
-  
-  // ---------- HAND TRACKING & KNN CLASSIFIER ----------
+
+  // ---------- KNN CLASSIFIER ----------
+  function getLandmarkVector(landmarks) {
+    let vec = [];
+    for (let lm of landmarks) {
+      vec.push(lm.x, lm.y, lm.z);
+    }
+    return vec;
+  }
+  function classifyLandmarks(landmarks) {
+    if (Object.keys(trainingSamples).length === 0) return null;
+    const inputVec = getLandmarkVector(landmarks);
+    let bestSign = null;
+    let bestDist = Infinity;
+    for (let [sign, samples] of Object.entries(trainingSamples)) {
+      for (let sample of samples) {
+        let dist = 0;
+        for (let i = 0; i < inputVec.length; i++) {
+          dist += (inputVec[i] - sample[i]) ** 2;
+        }
+        dist = Math.sqrt(dist);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestSign = sign;
+        }
+      }
+    }
+    if (bestDist < 0.65) {
+      let confidence = Math.max(0, 1 - bestDist / 1.2);
+      return { sign: bestSign, confidence };
+    }
+    return null;
+  }
+
+  // ---------- MODEL PERSISTENCE (IndexedDB) ----------
+  async function initOfflineDB() {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('SIGNAID_Offline', 2);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('translations')) {
+          db.createObjectStore('translations', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('model')) {
+          db.createObjectStore('model', { keyPath: 'id' });
+        }
+      };
+      request.onsuccess = (e) => {
+        offlineDB = e.target.result;
+        loadModelFromDB();
+        loadSavedTranslationsCount();
+        resolve();
+      };
+    });
+  }
+  async function saveModelToDB() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('model', 'readwrite');
+    const store = tx.objectStore('model');
+    store.put({ id: 'knnModel', samples: trainingSamples, signsList: signsList });
+  }
+  async function loadModelFromDB() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('model', 'readonly');
+    const store = tx.objectStore('model');
+    const req = store.get('knnModel');
+    req.onsuccess = () => {
+      if (req.result) {
+        trainingSamples = req.result.samples;
+        signsList = req.result.signsList;
+        updateSignsUI();
+        trainingStatusDiv.innerText = `✅ Loaded ${Object.keys(trainingSamples).length} signs from offline storage.`;
+      } else {
+        // Initialize default signs with empty arrays
+        signsList.forEach(s => { if (!trainingSamples[s]) trainingSamples[s] = []; });
+        updateSignsUI();
+      }
+    };
+  }
+  async function loadSavedTranslationsCount() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('translations', 'readonly');
+    const store = tx.objectStore('translations');
+    const countReq = store.count();
+    countReq.onsuccess = () => { offlineCountSpan.innerText = countReq.result; };
+  }
+  async function saveTranslation(input, output) {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('translations', 'readwrite');
+    const store = tx.objectStore('translations');
+    store.add({ input, output, mode: currentMode, timestamp: Date.now() });
+    tx.oncomplete = () => loadSavedTranslationsCount();
+  }
+
+  // ---------- UI: Training buttons ----------
+  function updateSignsUI() {
+    signsContainer.innerHTML = '';
+    signsList.forEach(sign => {
+      const btn = document.createElement('button');
+      btn.className = 'sign-btn';
+      btn.textContent = `📝 ${sign}`;
+      btn.onclick = () => startRecordingForSign(sign);
+      signsContainer.appendChild(btn);
+    });
+  }
+  function startRecordingForSign(sign) {
+    if (!cameraActive) {
+      trainingStatusDiv.innerText = '❌ Please start camera first.';
+      return;
+    }
+    if (isRecording) {
+      trainingStatusDiv.innerText = 'Recording already in progress. Wait or reload.';
+      return;
+    }
+    isRecording = true;
+    currentRecordingSign = sign;
+    tempRecordedVectors = [];
+    trainingStatusDiv.innerText = `🔴 Recording "${sign}"... Show sign clearly for 5 seconds.`;
+    let count = 0;
+    recordingTimer = setInterval(() => {
+      if (!window.lastLandmarks) {
+        trainingStatusDiv.innerText = `⚠️ No hand detected. Keep hand in frame.`;
+        return;
+      }
+      const vec = getLandmarkVector(window.lastLandmarks);
+      tempRecordedVectors.push(vec);
+      count++;
+      trainingStatusDiv.innerText = `🔴 Recording "${sign}"... ${count}/10 samples captured.`;
+      if (count >= 10) {
+        clearInterval(recordingTimer);
+        // Add all recorded vectors to training samples
+        if (!trainingSamples[sign]) trainingSamples[sign] = [];
+        trainingSamples[sign].push(...tempRecordedVectors);
+        saveModelToDB();
+        trainingStatusDiv.innerText = `✅ Added ${tempRecordedVectors.length} samples for "${sign}".`;
+        isRecording = false;
+        currentRecordingSign = null;
+      }
+    }, 500);
+  }
+
+  // Clear model
+  function clearModel() {
+    trainingSamples = {};
+    signsList.forEach(s => trainingSamples[s] = []);
+    saveModelToDB();
+    updateSignsUI();
+    trainingStatusDiv.innerText = '🗑️ Model cleared. You need to retrain signs.';
+  }
+  // Export model as JSON
+  function exportModel() {
+    const data = { trainingSamples, signsList };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'signaid_model.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  // Import model from file
+  function importModel(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        trainingSamples = data.trainingSamples;
+        signsList = data.signsList;
+        saveModelToDB();
+        updateSignsUI();
+        trainingStatusDiv.innerText = '✅ Model imported successfully.';
+      } catch(err) {
+        trainingStatusDiv.innerText = '❌ Invalid model file.';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- MEDIAPIPE HANDS + CLASSIFICATION ----------
   async function initHandTracking() {
     hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
@@ -272,89 +462,41 @@
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
-    
-    // Simple KNN classifier: compare landmark distances
-    function normalizeLandmarks(landmarks) {
-      // convert to flat array of 21*3 = 63 values
-      let flat = [];
-      for (let lm of landmarks) {
-        flat.push(lm.x, lm.y, lm.z);
-      }
-      return flat;
-    }
-    
-    function classify(landmarks) {
-      if (!trainingSamples || Object.keys(trainingSamples).length === 0) return null;
-      const inputVec = normalizeLandmarks(landmarks);
-      let bestLabel = null;
-      let bestDist = Infinity;
-      for (let [label, samples] of Object.entries(trainingSamples)) {
-        for (let sample of samples) {
-          let dist = 0;
-          for (let i = 0; i < inputVec.length; i++) {
-            dist += (inputVec[i] - sample[i]) ** 2;
-          }
-          dist = Math.sqrt(dist);
-          if (dist < bestDist) {
-            bestDist = dist;
-            bestLabel = label;
-          }
-        }
-      }
-      if (bestDist < 0.8) return { label: bestLabel, confidence: 1 - bestDist/1.5 };
-      return null;
-    }
-    
-    // Preload some generic samples (simulated, in real use you'd collect from user)
-    // For demo we add a few synthetic samples
-    function addDummySamples() {
-      // For each sign label we generate random landmark offsets (just for demo)
-      // In production you would collect real hand poses.
-      SIGN_LABELS.forEach(label => {
-        if (!trainingSamples[label]) trainingSamples[label] = [];
-        for (let i = 0; i < 3; i++) {
-          let dummy = Array(63).fill(0).map(() => Math.random() * 0.3);
-          trainingSamples[label].push(dummy);
-        }
-      });
-    }
-    addDummySamples();
-    
     hands.onResults((results) => {
       if (!cameraActive) return;
       if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
         const landmarks = results.multiHandLandmarks[0];
-        const classification = classify(landmarks);
-        if (classification && currentMode === 'sign2speech') {
-          const sign = classification.label;
-          const conf = classification.confidence;
-          inputTextDiv.innerText = sign;
-          confidenceSpan.innerText = `Confidence: ${(conf*100).toFixed(0)}%`;
-          // Translate sign to spoken text
-          const spokenText = sign; // simple mapping
-          outputTextDiv.innerText = spokenText;
-          liveCaption.innerText = `✋ Recognized: ${sign}`;
-          animateSign(sign);
-          // Speak aloud
-          if ('speechSynthesis' in window) {
-            const utterance = new SpeechSynthesisUtterance(spokenText);
-            utterance.lang = spokenLangSelect.value;
-            window.speechSynthesis.cancel();
-            window.speechSynthesis.speak(utterance);
+        window.lastLandmarks = landmarks;
+        if (currentMode === 'sign2speech') {
+          const result = classifyLandmarks(landmarks);
+          if (result) {
+            inputTextDiv.innerText = result.sign;
+            confidenceSpan.innerText = `Confidence: ${(result.confidence*100).toFixed(0)}%`;
+            outputTextDiv.innerText = result.sign;
+            liveCaption.innerText = `✋ Recognized: ${result.sign}`;
+            animateSign(result.sign);
+            // Speak
+            if ('speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(result.sign);
+              utterance.lang = spokenLangSelect.value;
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(utterance);
+            }
+          } else {
+            inputTextDiv.innerText = '?';
+            confidenceSpan.innerText = 'Confidence: low';
           }
-        } else if (currentMode !== 'sign2speech') {
-          liveCaption.innerText = '🎤 Speech mode active';
         }
       } else {
-        inputTextDiv.innerText = '—';
-        confidenceSpan.innerText = 'Confidence: —';
+        if (currentMode === 'sign2speech') {
+          inputTextDiv.innerText = '—';
+          confidenceSpan.innerText = 'Confidence: —';
+        }
       }
     });
   }
-  
   async function startCamera() {
     if (cameraActive) {
-      // stop
       if (videoStream) videoStream.getTracks().forEach(t => t.stop());
       if (cameraUtils) cameraUtils.stop();
       cameraActive = false;
@@ -370,27 +512,23 @@
       videoElement.srcObject = stream;
       videoElement.play();
       cameraUtils = new Camera(videoElement, {
-        onFrame: async () => {
-          await hands.send({ image: videoElement });
-        },
-        width: 640,
-        height: 480
+        onFrame: async () => { await hands.send({ image: videoElement }); },
+        width: 640, height: 480
       });
       cameraUtils.start();
       cameraActive = true;
       cameraBtn.innerText = '📷 Stop Camera';
       cameraBtn.classList.add('active');
-      liveCaption.innerText = 'Camera on – show a sign';
-    } catch (err) {
-      console.error(err);
+      liveCaption.innerText = 'Camera on – show trained signs';
+    } catch(err) {
       alert('Camera permission denied');
     }
   }
-  
-  // ---------- SPEECH RECOGNITION (Speech → Sign) ----------
+
+  // ---------- SPEECH RECOGNITION (speech→sign) ----------
   function startMicrophone() {
     if (!('webkitSpeechRecognition' in window)) {
-      alert('Speech recognition not supported in this browser');
+      alert('Speech recognition not supported');
       return;
     }
     if (micActive) {
@@ -412,96 +550,66 @@
       liveCaption.innerText = 'Listening...';
     };
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map(res => res[0].transcript)
-        .join(' ')
-        .toLowerCase();
+      const transcript = Array.from(event.results).map(res => res[0].transcript).join(' ').toLowerCase();
       inputTextDiv.innerText = transcript;
       if (currentMode === 'speech2sign') {
-        // Map spoken word to sign (simplified)
-        let signWord = 'hello';
-        if (transcript.includes('thank')) signWord = 'thank you';
-        else if (transcript.includes('yes')) signWord = 'yes';
-        else if (transcript.includes('no')) signWord = 'no';
-        else if (transcript.includes('please')) signWord = 'please';
-        else if (transcript.includes('goodbye')) signWord = 'goodbye';
-        outputTextDiv.innerText = `🤟 ${signWord}`;
-        confidenceSpan.innerText = 'Confidence: 85%';
-        animateSign(signWord);
-        liveCaption.innerText = `🤟 Sign: ${signWord}`;
+        // Map to first matching sign (simple)
+        let found = signsList.find(s => transcript.includes(s));
+        if (!found) found = 'hello';
+        outputTextDiv.innerText = `🤟 ${found}`;
+        confidenceSpan.innerText = 'Confidence: 80%';
+        animateSign(found);
+        liveCaption.innerText = `🤟 Sign: ${found}`;
       }
     };
-    recognition.onerror = (e) => console.error(e);
     recognition.start();
   }
-  
-  // ---------- OFFLINE STORAGE (IndexedDB) ----------
-  async function initOfflineDB() {
-    return new Promise((resolve) => {
-      const request = indexedDB.open('SIGNAID_Offline', 1);
-      request.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('translations')) {
-          db.createObjectStore('translations', { keyPath: 'id', autoIncrement: true });
-        }
-      };
-      request.onsuccess = (e) => {
-        offlineDB = e.target.result;
-        loadSavedTranslations();
-        resolve();
-      };
-    });
-  }
-  
-  async function saveTranslation(input, output, mode) {
-    if (!offlineDB) return;
-    const tx = offlineDB.transaction('translations', 'readwrite');
-    const store = tx.objectStore('translations');
-    store.add({ input, output, mode, timestamp: Date.now() });
-    tx.oncomplete = () => loadSavedTranslations();
-  }
-  
-  async function loadSavedTranslations() {
-    if (!offlineDB) return;
-    const tx = offlineDB.transaction('translations', 'readonly');
-    const store = tx.objectStore('translations');
-    const countReq = store.count();
-    countReq.onsuccess = () => {
-      offlineCountSpan.innerText = countReq.result;
-    };
-  }
-  
-  // ---------- UI EVENT HANDLERS ----------
+
+  // ---------- MODE & UI EVENTS ----------
   function setMode(mode) {
     currentMode = mode;
     document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
     if (mode === 'sign2speech') {
       document.querySelector('[data-mode="sign2speech"]').classList.add('active');
       micBtn.disabled = true;
-      if (cameraActive) startCamera(); // ensure camera running if needed
+      if (micActive) startMicrophone();
     } else {
       document.querySelector('[data-mode="speech2sign"]').classList.add('active');
       micBtn.disabled = false;
-      if (micActive) startMicrophone();
     }
   }
-  
-  cameraBtn.onclick = startCamera;
-  micBtn.onclick = startMicrophone;
-  saveBtn.onclick = () => {
-    const input = inputTextDiv.innerText;
-    const output = outputTextDiv.innerText;
-    if (input !== '—' && output !== '—') {
-      saveTranslation(input, output, currentMode);
-      alert('Saved offline');
-    } else alert('No translation to save');
-  };
-  
   document.querySelectorAll('.mode-btn').forEach(btn => {
     btn.onclick = () => setMode(btn.getAttribute('data-mode'));
   });
-  
-  // Auth
+  cameraBtn.onclick = startCamera;
+  micBtn.onclick = startMicrophone;
+  saveBtn.onclick = () => {
+    const inp = inputTextDiv.innerText;
+    const out = outputTextDiv.innerText;
+    if (inp !== '—' && out !== '—') {
+      saveTranslation(inp, out);
+      alert('Saved offline');
+    } else alert('Nothing to save');
+  };
+  addSignBtn.onclick = () => {
+    const newName = newSignInput.value.trim();
+    if (newName && !signsList.includes(newName)) {
+      signsList.push(newName);
+      trainingSamples[newName] = [];
+      updateSignsUI();
+      saveModelToDB();
+      newSignInput.value = '';
+      trainingStatusDiv.innerText = `Added new sign "${newName}". Record samples now.`;
+    } else alert('Sign already exists or empty');
+  };
+  clearModelBtn.onclick = clearModel;
+  exportModelBtn.onclick = exportModel;
+  importModelBtn.onclick = () => importModelInput.click();
+  importModelInput.onchange = (e) => {
+    if (e.target.files.length) importModel(e.target.files[0]);
+  };
+
+  // ---------- FIREBASE AUTH ----------
   auth.onAuthStateChanged((user) => {
     currentUser = user;
     if (user) {
@@ -516,8 +624,8 @@
   });
   loginBtn.onclick = () => window.location.href = '/firebase.html';
   logoutBtn.onclick = () => auth.signOut();
-  
-  // Initialize everything
+
+  // ---------- INITIALIZE EVERYTHING ----------
   async function init() {
     initAvatar();
     await initHandTracking();
