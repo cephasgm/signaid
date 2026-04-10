@@ -2,598 +2,78 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-  <title>SIGNAID 3.0 - Neural Bridge Offline</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIGNAID - Offline</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
+    * { margin:0; padding:0; box-sizing:border-box; font-family:system-ui; }
     body {
-      background: linear-gradient(135deg, #0a0f1e 0%, #1a2f45 100%);
+      background: linear-gradient(135deg, #0a0f1e, #1a2f45);
       min-height: 100vh;
-      height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 12px;
-      position: relative;
-      overflow: hidden;
+      padding: 20px;
     }
-
-    body::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-image: 
-        radial-gradient(circle at 20% 30%, rgba(37, 99, 235, 0.15) 0%, transparent 40%),
-        radial-gradient(circle at 80% 70%, rgba(124, 58, 237, 0.15) 0%, transparent 40%);
-      pointer-events: none;
-    }
-
-    .offline-container {
-      background: rgba(10, 15, 30, 0.35);
-      backdrop-filter: blur(15px);
-      -webkit-backdrop-filter: blur(15px);
-      border-radius: 40px;
-      padding: 24px;
-      width: 100%;
-      max-width: 600px;
-      border: 1px solid rgba(37, 99, 235, 0.25);
-      box-shadow: 0 0 60px rgba(37, 99, 235, 0.15);
-      position: relative;
-      z-index: 1;
+    .card {
+      background: rgba(10,15,30,0.6);
+      backdrop-filter: blur(20px);
+      border-radius: 48px;
+      padding: 40px;
       text-align: center;
-      max-height: 98vh;
-      overflow-y: auto;
-    }
-
-    /* Custom scrollbar */
-    .offline-container::-webkit-scrollbar {
-      width: 4px;
-    }
-    
-    .offline-container::-webkit-scrollbar-track {
-      background: rgba(255, 255, 255, 0.05);
-      border-radius: 4px;
-    }
-    
-    .offline-container::-webkit-scrollbar-thumb {
-      background: rgba(37, 99, 235, 0.5);
-      border-radius: 4px;
-    }
-
-    .neural-ring {
-      width: 100px;
-      height: 100px;
-      margin: 0 auto 16px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #2563eb, #7c3aed, #06b6d4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      animation: pulse 3s infinite;
-    }
-
-    .neural-ring::before {
-      content: '';
-      position: absolute;
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
-      border: 2px solid rgba(37, 99, 235, 0.3);
-      animation: ring 3s infinite;
-    }
-
-    .neural-ring::after {
-      content: '';
-      position: absolute;
-      width: 140px;
-      height: 140px;
-      border-radius: 50%;
-      border: 2px solid rgba(124, 58, 237, 0.2);
-      animation: ring 3s infinite 1s;
-    }
-
-    .neural-ring span {
-      font-size: 3.2rem;
-      filter: drop-shadow(0 0 15px #2563eb);
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.03); }
-    }
-
-    @keyframes ring {
-      0% { transform: scale(1); opacity: 0.5; }
-      100% { transform: scale(1.4); opacity: 0; }
-    }
-
-    h1 {
-      font-size: 2.2rem;
-      background: linear-gradient(135deg, #fff, #94a3b8);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin-bottom: 10px;
-      line-height: 1.2;
-    }
-
-    .offline-badge {
-      display: inline-block;
-      background: rgba(16, 185, 129, 0.15);
-      color: #10b981;
-      padding: 5px 18px;
-      border-radius: 30px;
-      font-size: 0.8rem;
-      margin-bottom: 16px;
-      border: 1px solid #10b981;
-      font-weight: 500;
-    }
-
-    .description-text {
-      color: #94a3b8;
-      margin-bottom: 20px;
-      line-height: 1.5;
-      font-size: 0.9rem;
-      padding: 0 8px;
-    }
-
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px;
-      margin: 16px 0;
-    }
-
-    .stat-card {
-      background: rgba(0, 0, 0, 0.35);
-      border-radius: 20px;
-      padding: 12px 6px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .stat-value {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #60a5fa;
-      margin-bottom: 3px;
-      line-height: 1.2;
-    }
-
-    .stat-label {
-      color: #94a3b8;
-      font-size: 0.7rem;
-      line-height: 1.3;
-      padding: 0 4px;
-    }
-
-    .offline-features {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-      margin: 16px 0;
-    }
-
-    .feature-item {
-      background: rgba(37, 99, 235, 0.1);
-      border-radius: 16px;
-      padding: 8px 4px;
-      color: #cbd5e1;
-      font-size: 0.7rem;
-      border: 1px solid rgba(37, 99, 235, 0.2);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .feature-item.active {
-      background: rgba(16, 185, 129, 0.1);
-      border-color: #10b981;
-      color: #10b981;
-    }
-
-    .action-buttons {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin: 20px 0 12px;
-      flex-wrap: wrap;
-    }
-
-    .btn {
-      padding: 10px 24px;
-      border-radius: 40px;
-      border: none;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-      font-size: 0.85rem;
-      min-width: 130px;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #2563eb, #7c3aed);
-      color: white;
-      border: none;
-      box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
-    }
-
-    .btn-outline {
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: white;
-    }
-
-    .btn-outline:hover {
-      border-color: #2563eb;
-      background: rgba(37, 99, 235, 0.1);
-    }
-
-    .status-message {
-      margin: 12px 0 8px;
-      color: #94a3b8;
-      font-size: 0.8rem;
-    }
-
-    .progress-bar {
+      border: 1px solid rgba(37,99,235,0.4);
+      max-width: 500px;
       width: 100%;
-      height: 4px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 2px;
-      margin: 12px 0;
-      overflow: hidden;
     }
-
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #2563eb, #7c3aed);
-      width: 75%;
-      border-radius: 2px;
-      animation: progress 2s ease-in-out infinite;
+    h1 { font-size: 2.5rem; color: white; margin-bottom: 16px; }
+    p { color: #94a3b8; margin-bottom: 24px; line-height: 1.5; }
+    .offline-icon { font-size: 4rem; margin-bottom: 20px; }
+    button {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border: none;
+      padding: 12px 32px;
+      border-radius: 40px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: 0.2s;
     }
-
-    @keyframes progress {
-      0% { width: 60%; }
-      50% { width: 80%; }
-      100% { width: 60%; }
-    }
-
-    .version-text {
-      margin-top: 8px;
-      color: #4b5563;
-      font-size: 0.7rem;
-    }
-
-    /* Mobile Responsive */
-    @media (max-width: 480px) {
-      body {
-        padding: 8px;
-      }
-
-      .offline-container {
-        padding: 16px;
-        border-radius: 30px;
-      }
-
-      .neural-ring {
-        width: 80px;
-        height: 80px;
-        margin-bottom: 12px;
-      }
-
-      .neural-ring::before {
-        width: 96px;
-        height: 96px;
-      }
-
-      .neural-ring::after {
-        width: 112px;
-        height: 112px;
-      }
-
-      .neural-ring span {
-        font-size: 2.5rem;
-      }
-
-      h1 {
-        font-size: 1.8rem;
-        margin-bottom: 6px;
-      }
-
-      .offline-badge {
-        padding: 4px 12px;
-        font-size: 0.7rem;
-        margin-bottom: 12px;
-      }
-
-      .description-text {
-        font-size: 0.8rem;
-        margin-bottom: 12px;
-      }
-
-      .stats-grid {
-        gap: 5px;
-        margin: 12px 0;
-      }
-
-      .stat-card {
-        padding: 8px 4px;
-        border-radius: 16px;
-      }
-
-      .stat-value {
-        font-size: 1.2rem;
-      }
-
-      .stat-label {
-        font-size: 0.6rem;
-      }
-
-      .offline-features {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 5px;
-        margin: 12px 0;
-      }
-
-      .feature-item {
-        padding: 6px 4px;
-        font-size: 0.65rem;
-      }
-
-      .action-buttons {
-        flex-direction: column;
-        gap: 8px;
-        margin: 16px 0 8px;
-      }
-
-      .btn {
-        width: 100%;
-        padding: 10px 16px;
-        font-size: 0.8rem;
-        min-width: auto;
-      }
-
-      .status-message {
-        font-size: 0.7rem;
-        margin: 8px 0 4px;
-      }
-
-      .progress-bar {
-        margin: 8px 0;
-      }
-
-      .version-text {
-        font-size: 0.6rem;
-      }
-    }
-
-    /* Small height screens */
-    @media (max-height: 700px) {
-      .offline-container {
-        padding: 16px;
-      }
-
-      .neural-ring {
-        width: 70px;
-        height: 70px;
-        margin-bottom: 10px;
-      }
-
-      .neural-ring::before {
-        width: 86px;
-        height: 86px;
-      }
-
-      .neural-ring::after {
-        width: 102px;
-        height: 102px;
-      }
-
-      .neural-ring span {
-        font-size: 2.2rem;
-      }
-
-      h1 {
-        font-size: 1.6rem;
-        margin-bottom: 4px;
-      }
-
-      .stats-grid {
-        margin: 10px 0;
-      }
-
-      .offline-features {
-        margin: 10px 0;
-      }
-
-      .action-buttons {
-        margin: 12px 0 6px;
-      }
-    }
-
-    /* Landscape mode */
-    @media (orientation: landscape) and (max-height: 500px) {
-      body {
-        padding: 5px;
-      }
-
-      .offline-container {
-        padding: 12px;
-        max-height: 98vh;
-      }
-
-      .neural-ring {
-        width: 60px;
-        height: 60px;
-        margin-bottom: 6px;
-        float: left;
-        margin-right: 15px;
-      }
-
-      .neural-ring::before {
-        width: 76px;
-        height: 76px;
-      }
-
-      .neural-ring::after {
-        width: 92px;
-        height: 92px;
-      }
-
-      .neural-ring span {
-        font-size: 1.8rem;
-      }
-
-      h1 {
-        font-size: 1.4rem;
-        text-align: left;
-        margin-bottom: 4px;
-      }
-
-      .offline-badge {
-        float: left;
-        clear: left;
-        margin-bottom: 8px;
-      }
-
-      .description-text {
-        text-align: left;
-        clear: left;
-      }
-
-      .stats-grid {
-        clear: both;
-      }
-    }
+    button:hover { transform: scale(1.02); }
+    .retry-status { margin-top: 20px; font-size: 0.8rem; color: #60a5fa; }
   </style>
 </head>
 <body>
-  <div class="offline-container">
-    <div class="neural-ring">
-      <span>🧠</span>
-    </div>
-    
-    <h1>Neural Bridge Offline</h1>
-    
-    <div class="offline-badge">
-      ⚡ Neural Link: Disconnected
-    </div>
-    
-    <p class="description-text">
-      Your SIGNAID 3.0 neural bridge is operating in offline mode.<br>
-      Limited functionality available with cached models.
-    </p>
-
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-value">15</div>
-        <div class="stat-label">Cached Sign Languages</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">1.2k</div>
-        <div class="stat-label">Offline Signs</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">87%</div>
-        <div class="stat-label">Neural Accuracy</div>
-      </div>
-    </div>
-
-    <div class="offline-features">
-      <div class="feature-item active">✓ Sign Recognition</div>
-      <div class="feature-item active">✓ Basic Translation</div>
-      <div class="feature-item active">✓ 3D Avatar</div>
-      <div class="feature-item">✗ Neural Interface</div>
-      <div class="feature-item">✗ Holographic</div>
-      <div class="feature-item">✗ Live Broadcast</div>
-    </div>
-
-    <div class="action-buttons">
-      <button class="btn btn-primary" onclick="window.location.href='/'">
-        Retry Connection
-      </button>
-      <button class="btn btn-outline" onclick="window.location.href='/#offline-mode'">
-        Continue Offline
-      </button>
-    </div>
-
-    <div class="status-message">
-      <span>🔄 Syncing when connection restores...</span>
-    </div>
-
-    <div class="progress-bar">
-      <div class="progress-fill"></div>
-    </div>
-
-    <div class="version-text">
-      SIGNAID 3.0 Neural Bridge • Cached Version 3.0.0
-    </div>
-  </div>
-
-  <script>
-    // Auto-retry connection
-    let retryCount = 0;
-    const maxRetries = 5;
-
-    function checkConnection() {
-      fetch('/api/v3/status', { 
-        method: 'HEAD',
-        mode: 'no-cors'
-      }).then(() => {
+<div class="card">
+  <div class="offline-icon">📡</div>
+  <h1>No Internet Connection</h1>
+  <p>SIGNAID is in offline mode. Some features may be limited, but you can still use previously cached translations and signs.</p>
+  <button id="retryBtn">⟳ Retry Connection</button>
+  <div class="retry-status" id="status">Checking network...</div>
+</div>
+<script>
+  let retryInterval = null;
+  const statusDiv = document.getElementById('status');
+  const retryBtn = document.getElementById('retryBtn');
+  
+  function checkConnection() {
+    fetch('/manifest.json', { method: 'HEAD', cache: 'no-store' })
+      .then(() => {
+        statusDiv.innerText = '✅ Connection restored! Redirecting...';
+        if (retryInterval) clearInterval(retryInterval);
         window.location.href = '/';
-      }).catch(() => {
-        retryCount++;
-        if (retryCount < maxRetries) {
-          setTimeout(checkConnection, 3000);
-        }
+      })
+      .catch(() => {
+        statusDiv.innerText = '❌ Still offline. Will retry automatically.';
       });
-    }
-
-    setTimeout(checkConnection, 5000);
-
-    // Show cached stats
-    if ('caches' in window) {
-      caches.open('signaid-models-v3').then(cache => {
-        cache.keys().then(keys => {
-          const countElement = document.querySelector('.stat-card:first-child .stat-value');
-          if (countElement) {
-            countElement.textContent = keys.filter(k => k.url.includes('model.json')).length || '15';
-          }
-        });
-      });
-    }
-
-    // Background sync registration
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-      navigator.serviceWorker.ready.then(registration => {
-        registration.sync.register('sync-translations').catch(() => {});
-        registration.sync.register('sync-neural').catch(() => {});
-      });
-    }
-
-    // Responsive adjustment for very small screens
-    function adjustForScreenSize() {
-      const container = document.querySelector('.offline-container');
-      if (window.innerHeight < 600) {
-        container.style.padding = '12px';
-      }
-    }
-
-    window.addEventListener('resize', adjustForScreenSize);
-    adjustForScreenSize();
-  </script>
+  }
+  
+  retryBtn.onclick = () => {
+    statusDiv.innerText = 'Checking...';
+    checkConnection();
+  };
+  
+  // Auto retry every 5 seconds
+  retryInterval = setInterval(checkConnection, 5000);
+</script>
 </body>
 </html>
