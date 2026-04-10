@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
   <title>SIGNAID – Community Sign Models</title>
-  <link rel="manifest" href="/manifest.json">
+  <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2563eb">
   <!-- Three.js -->
   <script type="importmap">
@@ -225,7 +225,7 @@
 
   window.lastLandmarks = null;
 
-  // ---------- 3D AVATAR (same as Phase 2) ----------
+  // ---------- 3D AVATAR ----------
   let scene, camera3d, renderer, avatarGroup, leftArm, rightArm;
   function initAvatar() {
     const canvas = document.getElementById('avatarCanvas');
@@ -299,7 +299,7 @@
     requestAnimationFrame(step);
   }
 
-  // ---------- KNN CLASSIFIER (same) ----------
+  // ---------- KNN CLASSIFIER ----------
   function getLandmarkVector(landmarks) {
     let vec = [];
     for (let lm of landmarks) vec.push(lm.x, lm.y, lm.z);
@@ -336,6 +336,7 @@
         loadSavedTranslationsCount();
         resolve();
       };
+      request.onerror = () => resolve(); // fallback
     });
   }
   async function saveModelToDB() {
@@ -463,14 +464,13 @@
       loadCommunityModels();
     } catch (err) {
       console.error(err);
-      trainingStatusDiv.innerText = '❌ Upload failed. Check permissions.';
+      trainingStatusDiv.innerText = '❌ Upload failed. Check Firestore rules.';
     }
   }
   async function loadCommunityModels(searchTerm = '') {
     communityList.innerHTML = '<div style="color:#94a3b8; text-align:center;">Loading models...</div>';
     try {
-      let query = db.collection('community_models').orderBy('createdAt', 'desc');
-      const snapshot = await query.get();
+      const snapshot = await db.collection('community_models').orderBy('createdAt', 'desc').get();
       if (snapshot.empty) { communityList.innerHTML = '<div style="color:#94a3b8; text-align:center;">No models yet. Be the first to upload!</div>'; return; }
       communityList.innerHTML = '';
       snapshot.forEach(doc => {
@@ -499,7 +499,7 @@
       });
     } catch (err) {
       console.error(err);
-      communityList.innerHTML = '<div style="color:#ef4444;">Failed to load community models.</div>';
+      communityList.innerHTML = '<div style="color:#ef4444;">Failed to load community models. Make sure Firestore is enabled.</div>';
     }
   }
   async function downloadModel(docId) {
@@ -513,7 +513,6 @@
       await saveModelToDB();
       updateSignsUI();
       trainingStatusDiv.innerText = `✅ Downloaded "${data.name}". Model ready.`;
-      // Increment download count
       await db.collection('community_models').doc(docId).update({ downloads: firebase.firestore.FieldValue.increment(1) });
       // Switch to local tab
       document.querySelector('[data-tab="local"]').click();
@@ -573,18 +572,29 @@
       const videoElement = document.createElement('video');
       videoElement.srcObject = stream;
       videoElement.play();
-      cameraUtils = new Camera(videoElement, { onFrame: async () => await hands.send({ image: videoElement }), width: 640, height: 480 });
+      // Wait a bit for video to be ready
+      await new Promise(r => setTimeout(r, 100));
+      cameraUtils = new Camera(videoElement, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480
+      });
       cameraUtils.start();
       cameraActive = true;
       cameraBtn.innerText = '📷 Stop Camera';
       cameraBtn.classList.add('active');
       liveCaption.innerText = 'Camera on – show trained signs';
-    } catch(err) { alert('Camera permission denied'); }
+    } catch(err) {
+      console.error(err);
+      alert('Camera permission denied or error: ' + err.message);
+    }
   }
 
-  // ---------- SPEECH RECOGNITION (simplified) ----------
+  // ---------- SPEECH RECOGNITION ----------
   function startMicrophone() {
-    if (!('webkitSpeechRecognition' in window)) { alert('Speech recognition not supported'); return; }
+    if (!('webkitSpeechRecognition' in window)) { alert('Speech recognition not supported in this browser.'); return; }
     if (micActive) {
       recognition.stop();
       micActive = false;
@@ -597,7 +607,12 @@
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = spokenLangSelect.value;
-    recognition.onstart = () => { micActive = true; micBtn.innerText = '🎙️ Stop Mic'; micBtn.classList.add('active'); liveCaption.innerText = 'Listening...'; };
+    recognition.onstart = () => {
+      micActive = true;
+      micBtn.innerText = '🎙️ Stop Mic';
+      micBtn.classList.add('active');
+      liveCaption.innerText = 'Listening...';
+    };
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results).map(res => res[0].transcript).join(' ').toLowerCase();
       inputTextDiv.innerText = transcript;
@@ -610,6 +625,10 @@
         liveCaption.innerText = `🤟 Sign: ${found}`;
       }
     };
+    recognition.onerror = (e) => {
+      console.error(e);
+      if (micActive) startMicrophone(); // restart on error
+    };
     recognition.start();
   }
 
@@ -620,7 +639,7 @@
     if (mode === 'sign2speech') {
       document.querySelector('[data-mode="sign2speech"]').classList.add('active');
       micBtn.disabled = true;
-      if (micActive) startMicrophone();
+      if (micActive) startMicrophone(); // turn off mic if active
     } else {
       document.querySelector('[data-mode="speech2sign"]').classList.add('active');
       micBtn.disabled = false;
