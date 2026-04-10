@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>SIGNAID – AI Grammar Correction</title>
+  <title>SIGNAID – Group Video Call</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2563eb">
   <!-- Three.js -->
@@ -67,8 +67,10 @@
     .tab { padding:8px 16px; background:transparent; border:none; color:#94a3b8; cursor:pointer; }
     .tab.active { color:#60a5fa; border-bottom:2px solid #60a5fa; }
     .call-panel { margin-top:16px; background:rgba(0,0,0,0.3); border-radius:24px; padding:12px; }
-    .remote-video { width:100%; border-radius:16px; background:#000; margin-top:8px; }
-    .call-controls { display:flex; gap:8px; margin-top:12px; }
+    .remote-videos { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-top:12px; }
+    .remote-video-item { position:relative; background:#000; border-radius:16px; overflow:hidden; aspect-ratio:4/3; }
+    .remote-video-item video { width:100%; height:100%; object-fit:cover; }
+    .participant-label { position:absolute; bottom:8px; left:8px; background:rgba(0,0,0,0.6); padding:4px 8px; border-radius:20px; font-size:0.7rem; color:white; }
     .grammar-toggle { display:flex; align-items:center; gap:12px; margin:12px 0; padding:8px; background:rgba(0,0,0,0.3); border-radius:40px; }
     .toggle-switch { position:relative; display:inline-block; width:50px; height:24px; }
     .toggle-switch input { opacity:0; width:0; height:0; }
@@ -81,7 +83,7 @@
 <body>
 <div class="app-container">
   <nav class="navbar">
-    <div class="logo">🧠 SIGN<span style="color:#2563eb;">AID</span> <span style="font-size:0.7rem;">Grammar AI</span></div>
+    <div class="logo">🧠 SIGN<span style="color:#2563eb;">AID</span> <span style="font-size:0.7rem;">Group Call</span></div>
     <div class="nav-buttons">
       <span id="userStatus" class="status-badge">Offline</span>
       <button id="loginBtn" class="btn-outline">Sign In</button>
@@ -112,7 +114,7 @@
       <div class="mode-tabs">
         <button class="mode-btn active" data-mode="sign2speech">✋ Sign → Speech</button>
         <button class="mode-btn" data-mode="speech2sign">🎤 Speech → Sign</button>
-        <button class="mode-btn" data-mode="videocall">📹 Video Call</button>
+        <button class="mode-btn" data-mode="videocall">📹 Group Call</button>
       </div>
       <div class="action-buttons">
         <button id="cameraBtn" class="action-btn">📷 Start Camera</button>
@@ -127,10 +129,10 @@
         <button class="tab" data-tab="phrases">🔤 Phrases</button>
         <button class="tab" data-tab="grammar">📖 Grammar AI</button>
         <button class="tab" data-tab="community">🌍 Community</button>
-        <button class="tab" data-tab="call">📞 Call</button>
+        <button class="tab" data-tab="call">📞 Group Call</button>
       </div>
 
-      <!-- LOCAL MODEL TAB -->
+      <!-- LOCAL MODEL TAB (same as Phase 7) -->
       <div id="localTab">
         <div class="output-box">
           <div class="output-label">INPUT (recognized sign)</div>
@@ -168,7 +170,7 @@
         </div>
       </div>
 
-      <!-- PHRASE TAB -->
+      <!-- PHRASE TAB (same as Phase 7) -->
       <div id="phrasesTab" style="display:none;">
         <div class="output-box" style="background:rgba(16,185,129,0.1);">
           <div class="output-label">LAST RECOGNISED SEQUENCE</div>
@@ -192,7 +194,7 @@
         </div>
       </div>
 
-      <!-- GRAMMAR AI TAB (NEW) -->
+      <!-- GRAMMAR AI TAB (same as Phase 7) -->
       <div id="grammarTab" style="display:none;">
         <div class="training-section">
           <h3 style="color:white; font-size:1rem; margin:16px 0 8px;">✨ Grammar Correction Rules</h3>
@@ -214,7 +216,7 @@
         </div>
       </div>
 
-      <!-- COMMUNITY TAB (extended for grammar rules) -->
+      <!-- COMMUNITY TAB (same as Phase 7) -->
       <div id="communityTab" style="display:none;">
         <div style="margin-bottom:12px;">
           <input type="text" id="communitySearch" placeholder="Search models..." class="lang-select" style="width:100%;">
@@ -227,18 +229,19 @@
         <div id="communityList" style="max-height:400px; overflow-y:auto;"></div>
       </div>
 
-      <!-- VIDEO CALL TAB -->
+      <!-- GROUP CALL TAB (NEW) -->
       <div id="callTab" style="display:none;">
         <div class="call-panel">
-          <h3 style="color:white; margin-bottom:12px;">Start or Join a Call</h3>
-          <input type="text" id="roomIdInput" placeholder="Room ID (e.g., myroom123)" class="lang-select" style="width:100%; margin-bottom:12px;">
+          <h3 style="color:white; margin-bottom:12px;">Group Video Call (up to 4 participants)</h3>
+          <input type="text" id="roomIdInput" placeholder="Room ID (e.g., mygroup)" class="lang-select" style="width:100%; margin-bottom:12px;">
           <div class="call-controls">
             <button id="createCallBtn" class="action-btn" style="background:#10b98120;">📞 Create Room</button>
             <button id="joinCallBtn" class="action-btn">🚪 Join Room</button>
-            <button id="hangupBtn" class="action-btn" style="background:#dc262620; display:none;">📴 Hang Up</button>
+            <button id="leaveCallBtn" class="action-btn" style="background:#dc262620; display:none;">🚪 Leave Call</button>
           </div>
           <div id="callStatus" style="color:#60a5fa; font-size:0.8rem; margin:12px 0;"></div>
-          <video id="remoteVideo" class="remote-video" autoplay playsinline style="display:none;"></video>
+          <div id="participantsList" style="margin:8px 0; color:#94a3b8; font-size:0.8rem;"></div>
+          <div id="remoteVideosContainer" class="remote-videos"></div>
           <div id="callTranslation" class="output-box" style="margin-top:12px;">
             <div class="output-label">CALL TRANSLATION (grammar‑corrected)</div>
             <div class="output-text" id="callTranslationText">Waiting for call...</div>
@@ -247,7 +250,7 @@
       </div>
     </div>
   </div>
-  <footer>© SIGNAID Phase 7 – AI Grammar Correction | Natural language fluency for sign translation</footer>
+  <footer>© SIGNAID Phase 8 – Group video calls with sign translation | Mesh topology up to 4 participants</footer>
 </div>
 
 <script type="module">
@@ -293,14 +296,18 @@
   const SEQUENCE_TIMEOUT = 1500;
 
   // Grammar correction rules
-  let grammarRules = []; // each: { input: string (space-separated signs), output: string }
+  let grammarRules = [];
   let grammarEnabled = true;
 
-  // WebRTC
-  let peerConnection = null;
+  // Group call variables
   let localStream = null;
-  let remoteStream = null;
+  let peerConnections = new Map(); // peerId -> RTCPeerConnection
+  let remoteStreams = new Map();   // peerId -> MediaStream
   let currentRoomId = null;
+  let currentParticipantId = null;
+  let roomRef = null;
+  let participantsListener = null;
+  let signalsUnsubscribe = null;
   const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
   // DOM elements
@@ -354,12 +361,13 @@
   const roomIdInput = document.getElementById('roomIdInput');
   const createCallBtn = document.getElementById('createCallBtn');
   const joinCallBtn = document.getElementById('joinCallBtn');
-  const hangupBtn = document.getElementById('hangupBtn');
+  const leaveCallBtn = document.getElementById('leaveCallBtn');
   const callStatusDiv = document.getElementById('callStatus');
-  const remoteVideo = document.getElementById('remoteVideo');
+  const remoteVideosContainer = document.getElementById('remoteVideosContainer');
+  const participantsListDiv = document.getElementById('participantsList');
   const callTranslationText = document.getElementById('callTranslationText');
 
-  // Community
+  // Community elements
   const communitySearch = document.getElementById('communitySearch');
   const communityList = document.getElementById('communityList');
   const uploadSignsBtn = document.getElementById('uploadSignsBtn');
@@ -369,37 +377,30 @@
 
   window.lastLandmarks = { left: null, right: null };
 
-  // ---------- GRAMMAR CORRECTION ENGINE ----------
+  // ---------- GRAMMAR CORRECTION ENGINE (same as Phase 7) ----------
   function correctGrammar(signSequenceArray) {
     if (!grammarEnabled) return signSequenceArray.join(' ');
     const inputStr = signSequenceArray.join(' ');
-    // First try exact rule match
     for (let rule of grammarRules) {
       if (rule.input.toLowerCase() === inputStr.toLowerCase()) {
         return rule.output;
       }
     }
-    // Try partial / fuzzy? For now, simple word reordering (SVO)
-    // Basic: move question words to front, add auxiliary verbs
     let words = [...signSequenceArray];
-    // Simple heuristics:
     if (words.includes('what') || words.includes('where') || words.includes('when') || words.includes('why') || words.includes('how')) {
       const qWord = words.find(w => ['what','where','when','why','how'].includes(w));
       if (qWord) {
         words = [qWord, ...words.filter(w => w !== qWord)];
-        // Add 'is/are' if missing
         if (!words.some(w => w === 'is' || w === 'are' || w === 'do' || w === 'does')) {
           words.splice(1, 0, 'is');
         }
       }
     }
-    // Capitalize first letter
     let result = words.join(' ');
     result = result.charAt(0).toUpperCase() + result.slice(1);
     return result;
   }
 
-  // Load/save grammar rules to IndexedDB
   async function saveGrammarToDB() {
     if (!offlineDB) return;
     const tx = offlineDB.transaction('model', 'readwrite');
@@ -413,7 +414,6 @@
       if (req.result && req.result.rules) {
         grammarRules = req.result.rules;
       } else {
-        // Default grammar rules
         grammarRules = [
           { input: "you eat what", output: "What are you eating?" },
           { input: "store you go", output: "Are you going to the store?" },
@@ -497,7 +497,7 @@
     }
   }
 
-  // ---------- 3D AVATAR (same as Phase 6) ----------
+  // ---------- 3D AVATAR (same) ----------
   let scene, camera3d, renderer, avatarGroup, leftArm, rightArm;
   function initAvatar() {
     const canvas = document.getElementById('avatarCanvas');
@@ -597,7 +597,7 @@
     return null;
   }
 
-  // ---------- INDEXEDDB (extended for grammar) ----------
+  // ---------- INDEXEDDB ----------
   async function initOfflineDB() {
     return new Promise((resolve) => {
       const request = indexedDB.open('SIGNAID_Offline', 6);
@@ -679,7 +679,7 @@
     tx.oncomplete = () => loadSavedTranslationsCount();
   }
 
-  // ---------- UI: Signs (unchanged from Phase 6) ----------
+  // ---------- UI: Signs (same) ----------
   function updateSignsUI() {
     signsContainer.innerHTML = '';
     signsList.forEach(sign => {
@@ -752,7 +752,7 @@
     reader.readAsText(file);
   }
 
-  // ---------- Phrases (unchanged) ----------
+  // ---------- Phrases (same) ----------
   function updatePhrasesUI() {
     phrasesContainer.innerHTML = '';
     phrases.forEach(phrase => {
@@ -853,7 +853,7 @@
     reader.readAsText(file);
   }
 
-  // ---------- Sequence matching with grammar integration ----------
+  // ---------- Sequence matching with grammar ----------
   function addToRecentSigns(sign) {
     const now = Date.now();
     recentSigns.push({ sign, time: now });
@@ -870,7 +870,6 @@
       confidenceSpan.innerText = `Sign confidence: medium`;
       lastSequenceSpan.innerText = lastSign;
     }
-    // Apply grammar correction if enabled
     if (grammarEnabled && finalOutput) {
       const words = finalOutput.split(' ');
       const corrected = correctGrammar(words);
@@ -887,9 +886,9 @@
       window.speechSynthesis.cancel();
       window.speechSynthesis.speak(utterance);
     }
-    // If in a call, send the corrected text
-    if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
-      sendSignTranslation(finalOutput);
+    // Send to all participants in group call
+    if (currentMode === 'videocall' && currentRoomId && finalOutput) {
+      broadcastTranslation(finalOutput);
     }
   }
   function matchPhrase(signsArray) {
@@ -904,149 +903,225 @@
     return null;
   }
 
-  // ---------- WebRTC Signaling (unchanged) ----------
-  async function createCall() {
-    const roomId = roomIdInput.value.trim();
-    if (!roomId) { callStatusDiv.innerText = 'Enter a room ID first.'; return; }
-    currentRoomId = roomId;
-    callStatusDiv.innerText = 'Creating room...';
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      peerConnection = new RTCPeerConnection(configuration);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-      peerConnection.ontrack = (event) => {
-        remoteStream = event.streams[0];
-        remoteVideo.srcObject = remoteStream;
-        remoteVideo.style.display = 'block';
-        callStatusDiv.innerText = 'Call connected – translation active';
-      };
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          db.collection('calls').doc(roomId).collection('signals').add({
-            candidate: event.candidate,
-            from: currentUser?.uid || 'anonymous',
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-      };
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      await db.collection('calls').doc(roomId).set({
-        offer: { type: offer.type, sdp: offer.sdp },
-        caller: currentUser?.uid || 'anonymous',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      const unsubscribe = db.collection('calls').doc(roomId).collection('signals')
-        .where('type', '==', 'answer').onSnapshot(snapshot => {
-          snapshot.docChanges().forEach(async (change) => {
-            if (change.type === 'added') {
-              const data = change.doc.data();
-              if (data.answer) {
-                const answer = new RTCSessionDescription({ type: 'answer', sdp: data.answer.sdp });
-                await peerConnection.setRemoteDescription(answer);
-                unsubscribe();
-              }
-            }
-          });
-        });
-      hangupBtn.style.display = 'inline-block';
-      createCallBtn.disabled = true;
-      joinCallBtn.disabled = true;
-      callStatusDiv.innerText = 'Waiting for participant to join...';
-    } catch(err) {
-      console.error(err);
-      callStatusDiv.innerText = 'Failed to create call: ' + err.message;
+  // ---------- GROUP CALL IMPLEMENTATION ----------
+  function broadcastTranslation(text) {
+    // Send via data channels to all peers
+    for (let [peerId, pc] of peerConnections.entries()) {
+      const dc = pc.createDataChannel('translation');
+      dc.onopen = () => dc.send(JSON.stringify({ text, from: currentParticipantId, timestamp: Date.now() }));
     }
-  }
-  async function joinCall() {
-    const roomId = roomIdInput.value.trim();
-    if (!roomId) { callStatusDiv.innerText = 'Enter room ID.'; return; }
-    currentRoomId = roomId;
-    callStatusDiv.innerText = 'Joining room...';
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      peerConnection = new RTCPeerConnection(configuration);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-      peerConnection.ontrack = (event) => {
-        remoteStream = event.streams[0];
-        remoteVideo.srcObject = remoteStream;
-        remoteVideo.style.display = 'block';
-        callStatusDiv.innerText = 'Call connected – translation active';
-      };
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          db.collection('calls').doc(roomId).collection('signals').add({
-            candidate: event.candidate,
-            from: currentUser?.uid || 'anonymous',
-            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-          });
-        }
-      };
-      const callDoc = await db.collection('calls').doc(roomId).get();
-      if (!callDoc.exists) throw new Error('Room does not exist');
-      const offer = callDoc.data().offer;
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      await db.collection('calls').doc(roomId).collection('signals').add({
-        answer: { type: answer.type, sdp: answer.sdp },
-        from: currentUser?.uid || 'anonymous',
-        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      hangupBtn.style.display = 'inline-block';
-      createCallBtn.disabled = true;
-      joinCallBtn.disabled = true;
-      db.collection('calls').doc(roomId).collection('signals')
-        .where('candidate', '!=', null).onSnapshot(snapshot => {
-          snapshot.docChanges().forEach(async (change) => {
-            if (change.type === 'added') {
-              const data = change.doc.data();
-              if (data.candidate && data.from !== (currentUser?.uid || 'anonymous')) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-              }
-            }
-          });
-        });
-    } catch(err) {
-      console.error(err);
-      callStatusDiv.innerText = 'Failed to join: ' + err.message;
-    }
-  }
-  async function hangupCall() {
-    if (peerConnection) peerConnection.close();
-    if (localStream) localStream.getTracks().forEach(t => t.stop());
-    if (remoteStream) remoteStream.getTracks().forEach(t => t.stop());
-    peerConnection = null;
-    localStream = null;
-    remoteStream = null;
-    remoteVideo.style.display = 'none';
-    remoteVideo.srcObject = null;
-    callStatusDiv.innerText = 'Call ended.';
-    hangupBtn.style.display = 'none';
-    createCallBtn.disabled = false;
-    joinCallBtn.disabled = false;
-    if (currentRoomId) {
-      await db.collection('calls').doc(currentRoomId).delete().catch(()=>{});
-      currentRoomId = null;
-    }
-  }
-  function sendSignTranslation(text) {
-    if (!peerConnection) return;
-    const dataChannel = peerConnection.createDataChannel('translation');
-    dataChannel.onopen = () => dataChannel.send(JSON.stringify({ text, timestamp: Date.now() }));
-    dataChannel.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      callTranslationText.innerText = `Remote: ${data.text}`;
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(data.text);
-        utterance.lang = spokenLangSelect.value;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
-      }
-    };
   }
 
-  // ---------- MEDIAPIPE HANDS (with phrase matching and grammar) ----------
+  function updateParticipantsUI() {
+    const participantIds = Array.from(peerConnections.keys());
+    participantsListDiv.innerText = `Participants (${participantIds.length + 1}): You${participantIds.length ? ', ' + participantIds.join(', ') : ''}`;
+  }
+
+  function addRemoteVideo(peerId, stream) {
+    if (remoteVideosContainer.querySelector(`[data-peer="${peerId}"]`)) return;
+    const div = document.createElement('div');
+    div.className = 'remote-video-item';
+    div.setAttribute('data-peer', peerId);
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.autoplay = true;
+    video.playsInline = true;
+    const label = document.createElement('div');
+    label.className = 'participant-label';
+    label.innerText = peerId.substring(0, 8);
+    div.appendChild(video);
+    div.appendChild(label);
+    remoteVideosContainer.appendChild(div);
+  }
+
+  function removeRemoteVideo(peerId) {
+    const el = remoteVideosContainer.querySelector(`[data-peer="${peerId}"]`);
+    if (el) el.remove();
+  }
+
+  async function createPeerConnection(peerId) {
+    const pc = new RTCPeerConnection(configuration);
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+    pc.ontrack = (event) => {
+      if (!remoteStreams.has(peerId)) {
+        remoteStreams.set(peerId, event.streams[0]);
+        addRemoteVideo(peerId, event.streams[0]);
+      }
+    };
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        db.collection('rooms').doc(currentRoomId).collection('signals').add({
+          candidate: event.candidate,
+          from: currentParticipantId,
+          to: peerId,
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+    };
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+        closePeerConnection(peerId);
+      }
+    };
+    peerConnections.set(peerId, pc);
+    return pc;
+  }
+
+  async function closePeerConnection(peerId) {
+    const pc = peerConnections.get(peerId);
+    if (pc) {
+      pc.close();
+      peerConnections.delete(peerId);
+      remoteStreams.delete(peerId);
+      removeRemoteVideo(peerId);
+      updateParticipantsUI();
+    }
+  }
+
+  async function initiateOffer(peerId) {
+    const pc = await createPeerConnection(peerId);
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await db.collection('rooms').doc(currentRoomId).collection('signals').add({
+      offer: { type: offer.type, sdp: offer.sdp },
+      from: currentParticipantId,
+      to: peerId,
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
+  async function handleSignal(signal) {
+    const { from, to, offer, answer, candidate } = signal;
+    if (to !== currentParticipantId) return;
+    if (offer) {
+      const pc = await createPeerConnection(from);
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await db.collection('rooms').doc(currentRoomId).collection('signals').add({
+        answer: { type: answer.type, sdp: answer.sdp },
+        from: currentParticipantId,
+        to: from,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else if (answer) {
+      const pc = peerConnections.get(from);
+      if (pc && pc.remoteDescription === null) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      }
+    } else if (candidate) {
+      const pc = peerConnections.get(from);
+      if (pc) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    }
+  }
+
+  async function joinRoom(roomId, isCreator = false) {
+    currentRoomId = roomId;
+    currentParticipantId = currentUser?.uid || `anon_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    roomRef = db.collection('rooms').doc(roomId);
+    if (isCreator) {
+      await roomRef.set({
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        creator: currentParticipantId
+      });
+    }
+    // Listen for participants (by listening to signals collection to get distinct participants)
+    signalsUnsubscribe = db.collection('rooms').doc(roomId).collection('signals')
+      .orderBy('timestamp', 'asc')
+      .onSnapshot((snapshot) => {
+        snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            await handleSignal(data);
+          }
+        });
+      });
+    callStatusDiv.innerText = `Joined room ${roomId}. Waiting for others...`;
+    leaveCallBtn.style.display = 'inline-block';
+    createCallBtn.disabled = true;
+    joinCallBtn.disabled = true;
+    // After joining, announce presence by sending a dummy signal (or we rely on offers)
+    // We'll just wait for other participants to send offers.
+    // Also, we need to listen for existing participants? For simplicity, we rely on dynamic connection establishment.
+    // Better: when a new participant joins, they should send offers to all existing participants.
+    // We'll do that by listening to the room's participants subcollection? Not necessary – we can just wait.
+    // To make it work: after joining, fetch all existing signals and process them? Already done via onSnapshot.
+    // Also, we need to send offers to existing participants. We can maintain a set of seen participants.
+    const seenParticipants = new Set();
+    // This will be handled by the signal listener: when we see a signal from a new participant, we initiate an offer.
+    // But to bootstrap, we need to send offers to all participants already in the room. We'll implement that by having a "participants" subcollection.
+    // Let's simplify: each participant when joining will create a "presence" document, and we listen for those.
+    const presenceRef = db.collection('rooms').doc(roomId).collection('presence').doc(currentParticipantId);
+    await presenceRef.set({ id: currentParticipantId, joinedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    db.collection('rooms').doc(roomId).collection('presence').onSnapshot((snap) => {
+      snap.docChanges().forEach(async (change) => {
+        if (change.type === 'added') {
+          const pid = change.doc.id;
+          if (pid !== currentParticipantId && !peerConnections.has(pid)) {
+            await initiateOffer(pid);
+          }
+        } else if (change.type === 'removed') {
+          await closePeerConnection(change.doc.id);
+        }
+      });
+    });
+  }
+
+  async function leaveRoom() {
+    if (currentRoomId) {
+      // Close all peer connections
+      for (let [peerId, pc] of peerConnections.entries()) {
+        pc.close();
+      }
+      peerConnections.clear();
+      remoteStreams.clear();
+      remoteVideosContainer.innerHTML = '';
+      if (signalsUnsubscribe) signalsUnsubscribe();
+      if (roomRef && currentParticipantId) {
+        await db.collection('rooms').doc(currentRoomId).collection('presence').doc(currentParticipantId).delete();
+      }
+      currentRoomId = null;
+      currentParticipantId = null;
+      callStatusDiv.innerText = 'Left the call.';
+      leaveCallBtn.style.display = 'none';
+      createCallBtn.disabled = false;
+      joinCallBtn.disabled = false;
+    }
+  }
+
+  async function createGroupCall() {
+    const roomId = roomIdInput.value.trim();
+    if (!roomId) { callStatusDiv.innerText = 'Enter a room ID.'; return; }
+    if (!localStream) {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (err) {
+        callStatusDiv.innerText = 'Failed to get camera/mic: ' + err.message;
+        return;
+      }
+    }
+    await joinRoom(roomId, true);
+  }
+
+  async function joinGroupCall() {
+    const roomId = roomIdInput.value.trim();
+    if (!roomId) { callStatusDiv.innerText = 'Enter a room ID.'; return; }
+    if (!localStream) {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (err) {
+        callStatusDiv.innerText = 'Failed to get camera/mic: ' + err.message;
+        return;
+      }
+    }
+    await joinRoom(roomId, false);
+  }
+
+  // ---------- MEDIAPIPE HANDS ----------
   async function initHandTracking() {
     hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
@@ -1180,9 +1255,9 @@
   exportPhrasesBtn.onclick = exportPhrases;
   importPhrasesBtn.onclick = () => importPhrasesInput.click();
   importPhrasesInput.onchange = (e) => { if (e.target.files.length) importPhrases(e.target.files[0]); };
-  createCallBtn.onclick = createCall;
-  joinCallBtn.onclick = joinCall;
-  hangupBtn.onclick = hangupCall;
+  createCallBtn.onclick = createGroupCall;
+  joinCallBtn.onclick = joinGroupCall;
+  leaveCallBtn.onclick = leaveRoom;
   grammarToggle.onchange = (e) => { grammarEnabled = e.target.checked; grammarStatus.innerText = grammarEnabled ? 'Grammar correction ON' : 'Grammar correction OFF'; };
   addRuleBtn.onclick = addGrammarRule;
   clearRulesBtn.onclick = clearGrammarRules;
@@ -1191,7 +1266,7 @@
   importRulesInput.onchange = (e) => { if (e.target.files.length) importGrammarRules(e.target.files[0]); };
   testGrammarBtn.onclick = testGrammar;
 
-  // ---------- Community (extended for grammar) ----------
+  // ---------- Community (same as Phase 7) ----------
   uploadSignsBtn.onclick = async () => {
     if (!currentUser) { alert('Sign in to upload.'); return; }
     const name = prompt('Model name', 'My Signs');
