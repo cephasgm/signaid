@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <title>SIGNAID – Sentence‑Level Sign Translation</title>
+  <title>SIGNAID – Video Call with Sign Translation</title>
   <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#2563eb">
   <!-- Three.js -->
@@ -62,16 +62,18 @@
     .download-btn { background:#2563eb; border:none; padding:4px 12px; border-radius:20px; cursor:pointer; }
     @keyframes pulse { 0% { opacity:1; } 50% { opacity:0.6; } }
     footer { text-align:center; margin-top:32px; color:#64748b; font-size:0.75rem; }
-    .tab-bar { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.1); }
+    .tab-bar { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid rgba(255,255,255,0.1); flex-wrap:wrap; }
     .tab { padding:8px 16px; background:transparent; border:none; color:#94a3b8; cursor:pointer; }
     .tab.active { color:#60a5fa; border-bottom:2px solid #60a5fa; }
-    .sequence-badge { display:inline-block; background:#2563eb; border-radius:16px; padding:2px 8px; font-size:0.7rem; margin-left:8px; }
+    .call-panel { margin-top:16px; background:rgba(0,0,0,0.3); border-radius:24px; padding:12px; }
+    .remote-video { width:100%; border-radius:16px; background:#000; margin-top:8px; }
+    .call-controls { display:flex; gap:8px; margin-top:12px; }
   </style>
 </head>
 <body>
 <div class="app-container">
   <nav class="navbar">
-    <div class="logo">🧠 SIGN<span style="color:#2563eb;">AID</span> <span style="font-size:0.7rem;">Phrase AI</span></div>
+    <div class="logo">🧠 SIGN<span style="color:#2563eb;">AID</span> <span style="font-size:0.7rem;">Video Call</span></div>
     <div class="nav-buttons">
       <span id="userStatus" class="status-badge">Offline</span>
       <button id="loginBtn" class="btn-outline">Sign In</button>
@@ -80,7 +82,7 @@
   </nav>
 
   <div class="main-grid">
-    <!-- Left panel: Camera + Avatar + Translation -->
+    <!-- Left panel: Camera + Avatar -->
     <div class="panel">
       <div class="avatar-container">
         <canvas id="avatarCanvas"></canvas>
@@ -102,6 +104,7 @@
       <div class="mode-tabs">
         <button class="mode-btn active" data-mode="sign2speech">✋ Sign → Speech</button>
         <button class="mode-btn" data-mode="speech2sign">🎤 Speech → Sign</button>
+        <button class="mode-btn" data-mode="videocall">📹 Video Call</button>
       </div>
       <div class="action-buttons">
         <button id="cameraBtn" class="action-btn">📷 Start Camera</button>
@@ -109,15 +112,16 @@
       </div>
     </div>
 
-    <!-- Right panel: Translation + Training + Community -->
+    <!-- Right panel: Translation + Training + Community + Call -->
     <div class="panel">
       <div class="tab-bar">
         <button class="tab active" data-tab="local">🏠 Local Model</button>
         <button class="tab" data-tab="phrases">🔤 Phrases</button>
         <button class="tab" data-tab="community">🌍 Community</button>
+        <button class="tab" data-tab="call">📞 Call</button>
       </div>
 
-      <!-- LOCAL MODEL TAB (sign training) -->
+      <!-- LOCAL MODEL TAB -->
       <div id="localTab">
         <div class="output-box">
           <div class="output-label">INPUT (recognized sign)</div>
@@ -149,7 +153,7 @@
         </div>
       </div>
 
-      <!-- PHRASE TAB (sentence training) -->
+      <!-- PHRASE TAB -->
       <div id="phrasesTab" style="display:none;">
         <div class="output-box" style="background:rgba(16,185,129,0.1);">
           <div class="output-label">LAST RECOGNISED SEQUENCE</div>
@@ -173,7 +177,7 @@
         </div>
       </div>
 
-      <!-- COMMUNITY TAB (share signs + phrases) -->
+      <!-- COMMUNITY TAB -->
       <div id="communityTab" style="display:none;">
         <div style="margin-bottom:12px;">
           <input type="text" id="communitySearch" placeholder="Search models..." class="lang-select" style="width:100%;">
@@ -184,9 +188,28 @@
         </div>
         <div id="communityList" style="max-height:400px; overflow-y:auto;"></div>
       </div>
+
+      <!-- VIDEO CALL TAB (NEW) -->
+      <div id="callTab" style="display:none;">
+        <div class="call-panel">
+          <h3 style="color:white; margin-bottom:12px;">Start or Join a Call</h3>
+          <input type="text" id="roomIdInput" placeholder="Room ID (e.g., myroom123)" class="lang-select" style="width:100%; margin-bottom:12px;">
+          <div class="call-controls">
+            <button id="createCallBtn" class="action-btn" style="background:#10b98120;">📞 Create Room</button>
+            <button id="joinCallBtn" class="action-btn">🚪 Join Room</button>
+            <button id="hangupBtn" class="action-btn" style="background:#dc262620; display:none;">📴 Hang Up</button>
+          </div>
+          <div id="callStatus" style="color:#60a5fa; font-size:0.8rem; margin:12px 0;"></div>
+          <video id="remoteVideo" class="remote-video" autoplay playsinline style="display:none;"></video>
+          <div id="callTranslation" class="output-box" style="margin-top:12px;">
+            <div class="output-label">CALL TRANSLATION</div>
+            <div class="output-text" id="callTranslationText">Waiting for call...</div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <footer>© SIGNAID Phase 5 – Sentence‑level sign translation | Train signs, then chain them into phrases</footer>
+  <footer>© SIGNAID Phase 6 – Real‑time video call with sign ↔ speech translation</footer>
 </div>
 
 <script type="module">
@@ -216,22 +239,27 @@
   let currentUser = null;
   let offlineDB = null;
 
-  // KNN model for signs
+  // KNN model
   let trainingSamples = {};
   let signsList = ['hello', 'thank you', 'yes', 'no', 'please', 'goodbye'];
   let isTwoHandedModel = false;
 
-  // Phrase database: { phraseId, signSequence (array), spokenText }
-  let phrases = []; // each: { id, sequence, spoken }
+  // Phrases
+  let phrases = [];
   let nextPhraseId = 1;
-
-  // Sequence recording state
   let isRecordingSequence = false;
   let currentSequence = [];
-  let sequenceTimer = null;
+  let recentSigns = [];
   let lastRecognizedSign = null;
   let lastSignTimestamp = 0;
-  const SEQUENCE_TIMEOUT = 1500; // ms between signs to consider new sequence
+  const SEQUENCE_TIMEOUT = 1500;
+
+  // WebRTC
+  let peerConnection = null;
+  let localStream = null;
+  let remoteStream = null;
+  let currentRoomId = null;
+  const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
   // DOM elements
   const loginBtn = document.getElementById('loginBtn');
@@ -267,6 +295,15 @@
   const phraseStatusDiv = document.getElementById('phraseStatus');
   const lastSequenceSpan = document.getElementById('lastSequence');
 
+  // Call elements
+  const roomIdInput = document.getElementById('roomIdInput');
+  const createCallBtn = document.getElementById('createCallBtn');
+  const joinCallBtn = document.getElementById('joinCallBtn');
+  const hangupBtn = document.getElementById('hangupBtn');
+  const callStatusDiv = document.getElementById('callStatus');
+  const remoteVideo = document.getElementById('remoteVideo');
+  const callTranslationText = document.getElementById('callTranslationText');
+
   // Community
   const communitySearch = document.getElementById('communitySearch');
   const communityList = document.getElementById('communityList');
@@ -276,25 +313,110 @@
 
   window.lastLandmarks = { left: null, right: null };
 
-  // ---------- 3D AVATAR (same) ----------
+  // ---------- 3D AVATAR (simplified) ----------
   let scene, camera3d, renderer, avatarGroup, leftArm, rightArm;
-  function initAvatar() { ... } // (unchanged, same as Phase 4)
-  // (I'll include the full function for brevity, but it's identical)
-  // For space, I'll assume it's the same – in final answer I'll include full code.
+  function initAvatar() {
+    const canvas = document.getElementById('avatarCanvas');
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111827);
+    camera3d = new THREE.PerspectiveCamera(45, width/height, 0.1, 1000);
+    camera3d.position.set(0, 1.5, 3);
+    renderer = new THREE.WebGLRenderer({ canvas, alpha: false });
+    renderer.setSize(width, height);
+    const ambient = new THREE.AmbientLight(0x404060);
+    scene.add(ambient);
+    const light = new THREE.DirectionalLight(0xffffff, 0.8);
+    light.position.set(2, 3, 2);
+    scene.add(light);
+    avatarGroup = new THREE.Group();
+    const bodyGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.2, 8);
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.6;
+    avatarGroup.add(body);
+    const headGeo = new THREE.SphereGeometry(0.4, 32);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0xfcd34d });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 1.2;
+    avatarGroup.add(head);
+    const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.8);
+    const armMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
+    leftArm = new THREE.Mesh(armGeo, armMat);
+    leftArm.position.set(-0.6, 1.0, 0);
+    leftArm.rotation.z = 0.3;
+    avatarGroup.add(leftArm);
+    rightArm = new THREE.Mesh(armGeo, armMat);
+    rightArm.position.set(0.6, 1.0, 0);
+    rightArm.rotation.z = -0.3;
+    avatarGroup.add(rightArm);
+    scene.add(avatarGroup);
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera3d);
+    }
+    animate();
+    window.addEventListener('resize', () => {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      renderer.setSize(w, h);
+      camera3d.aspect = w/h;
+      camera3d.updateProjectionMatrix();
+    });
+  }
+  function animateSign(signWord) {
+    if (!leftArm || !rightArm) return;
+    let intensity = 0.5;
+    if (signWord === 'hello') intensity = 0.8;
+    else if (signWord === 'thank you') intensity = 0.6;
+    else intensity = 0.4;
+    let start = null;
+    function step(timestamp) {
+      if (!start) start = timestamp;
+      const elapsed = (timestamp - start) / 1000;
+      if (elapsed < 0.6) {
+        const t = Math.sin(elapsed * Math.PI * 2) * intensity;
+        leftArm.rotation.x = t * 0.8;
+        rightArm.rotation.x = -t * 0.8;
+        requestAnimationFrame(step);
+      } else {
+        leftArm.rotation.x = 0;
+        rightArm.rotation.x = 0;
+      }
+    }
+    requestAnimationFrame(step);
+  }
 
-  // To keep answer size manageable, I'll skip repeating the avatar code.
-  // In final answer I will include the complete working script.
-  // For now, I'll mark with placeholder but final will be full.
+  // ---------- LANDMARK & KNN (Two‑handed) ----------
+  function getLandmarkVectorFromHands(leftHand, rightHand) {
+    const leftVec = leftHand ? leftHand.flatMap(lm => [lm.x, lm.y, lm.z]) : Array(63).fill(0);
+    const rightVec = rightHand ? rightHand.flatMap(lm => [lm.x, lm.y, lm.z]) : Array(63).fill(0);
+    return [...leftVec, ...rightVec];
+  }
+  function getFeatureVector(leftHand, rightHand) {
+    if (leftHand || rightHand) return getLandmarkVectorFromHands(leftHand, rightHand);
+    return null;
+  }
+  function classifyFeatures(features) {
+    if (Object.keys(trainingSamples).length === 0) return null;
+    let bestSign = null, bestDist = Infinity;
+    for (let [sign, samples] of Object.entries(trainingSamples)) {
+      for (let sample of samples) {
+        const len = Math.min(features.length, sample.length);
+        let dist = 0;
+        for (let i = 0; i < len; i++) dist += (features[i] - sample[i]) ** 2;
+        dist = Math.sqrt(dist);
+        if (dist < bestDist) { bestDist = dist; bestSign = sign; }
+      }
+    }
+    if (bestDist < 0.7) return { sign: bestSign, confidence: Math.max(0, 1 - bestDist / 1.4) };
+    return null;
+  }
 
-  // ---------- LANDMARK & KNN (same as Phase 4, with phrase integration) ----------
-  function getLandmarkVectorFromHands(leftHand, rightHand) { ... }
-  function getFeatureVector(leftHand, rightHand) { ... }
-  function classifyFeatures(features) { ... }
-
-  // ---------- INDEXEDDB (signs + phrases) ----------
+  // ---------- INDEXEDDB ----------
   async function initOfflineDB() {
     return new Promise((resolve) => {
-      const request = indexedDB.open('SIGNAID_Offline', 4);
+      const request = indexedDB.open('SIGNAID_Offline', 5);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('translations')) db.createObjectStore('translations', { keyPath: 'id', autoIncrement: true });
@@ -308,22 +430,39 @@
         loadSavedTranslationsCount();
         resolve();
       };
-      request.onerror = () => resolve();
     });
   }
-  async function saveModelToDB() { ... } // same
-  async function loadModelFromDB() { ... } // same
+  async function saveModelToDB() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('model', 'readwrite');
+    tx.objectStore('model').put({ id: 'knnModel', samples: trainingSamples, signsList, isTwoHanded: isTwoHandedModel });
+  }
+  async function loadModelFromDB() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('model', 'readonly');
+    const req = tx.objectStore('model').get('knnModel');
+    req.onsuccess = () => {
+      if (req.result) {
+        trainingSamples = req.result.samples;
+        signsList = req.result.signsList;
+        isTwoHandedModel = req.result.isTwoHanded || false;
+        updateSignsUI();
+        trainingStatusDiv.innerText = `✅ Loaded ${Object.keys(trainingSamples).length} signs (${isTwoHandedModel ? '2‑hand' : '1‑hand'}).`;
+      } else {
+        signsList.forEach(s => { if (!trainingSamples[s]) trainingSamples[s] = []; });
+        updateSignsUI();
+      }
+    };
+  }
   async function loadPhrasesFromDB() {
     if (!offlineDB) return;
     const tx = offlineDB.transaction('phrases', 'readonly');
-    const store = tx.objectStore('phrases');
-    const req = store.getAll();
+    const req = tx.objectStore('phrases').getAll();
     req.onsuccess = () => {
       if (req.result && req.result.length) {
         phrases = req.result;
         nextPhraseId = Math.max(...phrases.map(p => p.id), 0) + 1;
       } else {
-        // default phrases
         phrases = [
           { id: 1, sequence: ['hello'], spoken: 'Hello!' },
           { id: 2, sequence: ['thank you'], spoken: 'Thank you!' },
@@ -342,9 +481,93 @@
     store.clear();
     phrases.forEach(p => store.put(p));
   }
-  async function loadSavedTranslationsCount() { ... }
+  async function loadSavedTranslationsCount() {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('translations', 'readonly');
+    const countReq = tx.objectStore('translations').count();
+    countReq.onsuccess = () => document.getElementById('offlineCount').innerText = countReq.result;
+  }
+  async function saveTranslation(input, output) {
+    if (!offlineDB) return;
+    const tx = offlineDB.transaction('translations', 'readwrite');
+    tx.objectStore('translations').add({ input, output, mode: currentMode, timestamp: Date.now() });
+    tx.oncomplete = () => loadSavedTranslationsCount();
+  }
 
-  // ---------- PHRASE UI ----------
+  // ---------- UI: Signs ----------
+  function updateSignsUI() {
+    signsContainer.innerHTML = '';
+    signsList.forEach(sign => {
+      const btn = document.createElement('button');
+      btn.className = 'sign-btn';
+      btn.textContent = `📝 ${sign}`;
+      btn.onclick = () => startRecordingForSign(sign);
+      signsContainer.appendChild(btn);
+    });
+  }
+  let recordingTimer = null;
+  let tempRecordedVectors = [];
+  function startRecordingForSign(sign) {
+    if (!cameraActive) { trainingStatusDiv.innerText = '❌ Start camera first.'; return; }
+    if (window.isRecording) return;
+    window.isRecording = true;
+    tempRecordedVectors = [];
+    trainingStatusDiv.innerText = `🔴 Recording "${sign}" (both hands)... Show sign for 5 sec.`;
+    let count = 0;
+    recordingTimer = setInterval(() => {
+      const left = window.lastLandmarks.left, right = window.lastLandmarks.right;
+      if (!left && !right) { trainingStatusDiv.innerText = `⚠️ No hands detected.`; return; }
+      const features = getFeatureVector(left, right);
+      if (features) {
+        tempRecordedVectors.push(features);
+        count++;
+        trainingStatusDiv.innerText = `🔴 Recording "${sign}"... ${count}/10 samples.`;
+        if (count >= 10) {
+          clearInterval(recordingTimer);
+          if (!trainingSamples[sign]) trainingSamples[sign] = [];
+          trainingSamples[sign].push(...tempRecordedVectors);
+          if (tempRecordedVectors.some(v => v.length > 63)) isTwoHandedModel = true;
+          saveModelToDB();
+          trainingStatusDiv.innerText = `✅ Added ${tempRecordedVectors.length} samples for "${sign}".`;
+          window.isRecording = false;
+        }
+      }
+    }, 500);
+  }
+  function clearModel() {
+    trainingSamples = {};
+    signsList.forEach(s => trainingSamples[s] = []);
+    isTwoHandedModel = false;
+    saveModelToDB();
+    updateSignsUI();
+    trainingStatusDiv.innerText = '🗑️ Model cleared.';
+  }
+  function exportModel() {
+    const data = { trainingSamples, signsList, isTwoHanded: isTwoHandedModel };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'signaid_model.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function importModel(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        trainingSamples = data.trainingSamples;
+        signsList = data.signsList;
+        isTwoHandedModel = data.isTwoHanded || false;
+        saveModelToDB();
+        updateSignsUI();
+        trainingStatusDiv.innerText = '✅ Model imported.';
+      } catch(err) { trainingStatusDiv.innerText = '❌ Invalid file.'; }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- Phrases ----------
   function updatePhrasesUI() {
     phrasesContainer.innerHTML = '';
     phrases.forEach(phrase => {
@@ -367,8 +590,6 @@
       phrasesContainer.appendChild(div);
     });
   }
-
-  // Record a sequence of signs
   function startSequenceRecording() {
     if (!cameraActive) { phraseStatusDiv.innerText = '❌ Start camera first.'; return; }
     if (isRecordingSequence) return;
@@ -376,15 +597,15 @@
     currentSequence = [];
     phraseStatusDiv.innerText = '🔴 Recording sequence – perform signs one after another (pause >1.5s ends).';
     let timeoutId = null;
-    function resetTimeout() {
+    const resetTimeout = () => {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
         if (isRecordingSequence && currentSequence.length > 0) {
           finishSequenceRecording();
         }
       }, SEQUENCE_TIMEOUT);
-    }
-    const onSignRecognized = (sign) => {
+    };
+    const onSign = (sign) => {
       if (!isRecordingSequence) return;
       const now = Date.now();
       if (sign !== lastRecognizedSign || (now - lastSignTimestamp) > 500) {
@@ -395,22 +616,19 @@
         resetTimeout();
       }
     };
-    window.tempOnSign = onSignRecognized;
+    window.tempOnSign = onSign;
     resetTimeout();
   }
   function finishSequenceRecording() {
     if (!isRecordingSequence) return;
     isRecordingSequence = false;
-    if (window.tempOnSign) delete window.tempOnSign;
+    delete window.tempOnSign;
     if (currentSequence.length < 2) {
       phraseStatusDiv.innerText = `❌ Need at least 2 signs. Got: ${currentSequence.join(' → ')}`;
       return;
     }
     const spoken = newPhraseName.value.trim();
-    if (!spoken) {
-      phraseStatusDiv.innerText = `Please enter a spoken phrase in the input above.`;
-      return;
-    }
+    if (!spoken) { phraseStatusDiv.innerText = `Please enter a spoken phrase.`; return; }
     const newId = nextPhraseId++;
     phrases.push({ id: newId, sequence: [...currentSequence], spoken });
     savePhrasesToDB();
@@ -427,14 +645,13 @@
     phraseStatusDiv.innerText = '🗑️ All phrases cleared.';
   }
   function exportPhrases() {
-    const data = { phrases, version: 2 };
+    const data = { phrases };
     const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = URL.createObjectURL(blob);
     a.download = 'signaid_phrases.json';
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(a.href);
   }
   function importPhrases(file) {
     const reader = new FileReader();
@@ -451,91 +668,368 @@
     reader.readAsText(file);
   }
 
-  // ---------- SEQUENCE MATCHING (sliding window) ----------
-  let recentSigns = []; // store last N recognized signs with timestamps
+  // ---------- Sequence matching ----------
   function addToRecentSigns(sign) {
     const now = Date.now();
     recentSigns.push({ sign, time: now });
-    // keep only last 10 seconds
     recentSigns = recentSigns.filter(s => now - s.time < 10000);
-    // try to match phrase
     const matched = matchPhrase(recentSigns.map(s => s.sign));
     if (matched) {
       outputTextDiv.innerText = matched.spoken;
       confidenceSpan.innerText = `Phrase confidence: high`;
       liveCaption.innerText = `🔤 Sentence: ${matched.spoken}`;
-      if ('speechSynthesis' in window) {
+      lastSequenceSpan.innerText = matched.sequence.join(' → ');
+      if ('speechSynthesis' in window && currentMode !== 'videocall') {
         const utterance = new SpeechSynthesisUtterance(matched.spoken);
         utterance.lang = spokenLangSelect.value;
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
       }
-      lastSequenceSpan.innerText = matched.sequence.join(' → ');
-    } else {
-      // fallback to single sign translation
-      const singleSign = recentSigns.length ? recentSigns[recentSigns.length-1].sign : null;
-      if (singleSign && phrases.some(p => p.sequence.length === 1 && p.sequence[0] === singleSign)) {
-        const phrase = phrases.find(p => p.sequence.length === 1 && p.sequence[0] === singleSign);
-        outputTextDiv.innerText = phrase.spoken;
-        confidenceSpan.innerText = `Sign confidence: high`;
-        liveCaption.innerText = `✋ Sign: ${singleSign}`;
-        lastSequenceSpan.innerText = singleSign;
-      } else {
-        // just show the last sign
-        if (singleSign) outputTextDiv.innerText = singleSign;
+      // If in a call, send the spoken translation to the remote peer
+      if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
+        sendSignTranslation(matched.spoken);
+      }
+    } else if (recentSigns.length) {
+      const last = recentSigns[recentSigns.length-1].sign;
+      outputTextDiv.innerText = last;
+      confidenceSpan.innerText = `Sign confidence: medium`;
+      liveCaption.innerText = `✋ Sign: ${last}`;
+      if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
+        sendSignTranslation(last);
       }
     }
   }
   function matchPhrase(signsArray) {
-    // try longest first
     const sorted = [...phrases].sort((a,b) => b.sequence.length - a.sequence.length);
     for (let phrase of sorted) {
       const seq = phrase.sequence;
-      // check if signsArray ends with seq
       if (signsArray.length >= seq.length) {
         const lastPart = signsArray.slice(-seq.length);
-        if (lastPart.every((s, idx) => s === seq[idx])) {
-          return phrase;
-        }
+        if (lastPart.every((s, idx) => s === seq[idx])) return phrase;
       }
     }
     return null;
   }
 
-  // ---------- MEDIAPIPE HANDS (with phrase integration) ----------
-  async function initHandTracking() { ... } // same as Phase 4, but in onResults we call addToRecentSigns
-  // In onResults, after classifying a sign, call addToRecentSigns(result.sign)
+  // ---------- WebRTC Signaling via Firestore ----------
+  async function createCall() {
+    const roomId = roomIdInput.value.trim();
+    if (!roomId) { callStatusDiv.innerText = 'Enter a room ID first.'; return; }
+    currentRoomId = roomId;
+    callStatusDiv.innerText = 'Creating room...';
+    try {
+      // Get local media
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // Setup peer connection
+      peerConnection = new RTCPeerConnection(configuration);
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      peerConnection.ontrack = (event) => {
+        remoteStream = event.streams[0];
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.style.display = 'block';
+        callStatusDiv.innerText = 'Call connected – translation active';
+      };
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          db.collection('calls').doc(roomId).collection('signals').add({
+            candidate: event.candidate,
+            from: currentUser?.uid || 'anonymous',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      };
+      // Create offer
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      await db.collection('calls').doc(roomId).set({
+        offer: { type: offer.type, sdp: offer.sdp },
+        caller: currentUser?.uid || 'anonymous',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      // Listen for answer
+      const unsubscribe = db.collection('calls').doc(roomId).collection('signals')
+        .where('type', '==', 'answer').onSnapshot(snapshot => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              if (data.answer) {
+                const answer = new RTCSessionDescription({ type: 'answer', sdp: data.answer.sdp });
+                await peerConnection.setRemoteDescription(answer);
+                unsubscribe();
+              }
+            }
+          });
+        });
+      hangupBtn.style.display = 'inline-block';
+      createCallBtn.disabled = true;
+      joinCallBtn.disabled = true;
+      callStatusDiv.innerText = 'Waiting for participant to join...';
+    } catch(err) {
+      console.error(err);
+      callStatusDiv.innerText = 'Failed to create call: ' + err.message;
+    }
+  }
+  async function joinCall() {
+    const roomId = roomIdInput.value.trim();
+    if (!roomId) { callStatusDiv.innerText = 'Enter room ID.'; return; }
+    currentRoomId = roomId;
+    callStatusDiv.innerText = 'Joining room...';
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      peerConnection = new RTCPeerConnection(configuration);
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+      peerConnection.ontrack = (event) => {
+        remoteStream = event.streams[0];
+        remoteVideo.srcObject = remoteStream;
+        remoteVideo.style.display = 'block';
+        callStatusDiv.innerText = 'Call connected – translation active';
+      };
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          db.collection('calls').doc(roomId).collection('signals').add({
+            candidate: event.candidate,
+            from: currentUser?.uid || 'anonymous',
+            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
+      };
+      const callDoc = await db.collection('calls').doc(roomId).get();
+      if (!callDoc.exists) throw new Error('Room does not exist');
+      const offer = callDoc.data().offer;
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      await db.collection('calls').doc(roomId).collection('signals').add({
+        answer: { type: answer.type, sdp: answer.sdp },
+        from: currentUser?.uid || 'anonymous',
+        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      hangupBtn.style.display = 'inline-block';
+      createCallBtn.disabled = true;
+      joinCallBtn.disabled = true;
+      // Listen for ICE candidates
+      db.collection('calls').doc(roomId).collection('signals')
+        .where('candidate', '!=', null).onSnapshot(snapshot => {
+          snapshot.docChanges().forEach(async (change) => {
+            if (change.type === 'added') {
+              const data = change.doc.data();
+              if (data.candidate && data.from !== (currentUser?.uid || 'anonymous')) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+              }
+            }
+          });
+        });
+    } catch(err) {
+      console.error(err);
+      callStatusDiv.innerText = 'Failed to join: ' + err.message;
+    }
+  }
+  async function hangupCall() {
+    if (peerConnection) peerConnection.close();
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    if (remoteStream) remoteStream.getTracks().forEach(t => t.stop());
+    peerConnection = null;
+    localStream = null;
+    remoteStream = null;
+    remoteVideo.style.display = 'none';
+    remoteVideo.srcObject = null;
+    callStatusDiv.innerText = 'Call ended.';
+    hangupBtn.style.display = 'none';
+    createCallBtn.disabled = false;
+    joinCallBtn.disabled = false;
+    if (currentRoomId) {
+      // Optionally clean up Firestore documents
+      const ref = db.collection('calls').doc(currentRoomId);
+      await ref.delete().catch(()=>{});
+      currentRoomId = null;
+    }
+  }
+  function sendSignTranslation(text) {
+    if (!peerConnection) return;
+    // Send via data channel (simple)
+    if (peerConnection.connectionState === 'connected') {
+      const dataChannel = peerConnection.createDataChannel('translation');
+      dataChannel.onopen = () => dataChannel.send(JSON.stringify({ text, timestamp: Date.now() }));
+      dataChannel.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        callTranslationText.innerText = `Remote: ${data.text}`;
+        // Also speak it locally
+        if ('speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(data.text);
+          utterance.lang = spokenLangSelect.value;
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(utterance);
+        }
+      };
+    }
+  }
 
-  // For brevity, I'll include the full final script with all functions in the final answer.
+  // ---------- MEDIAPIPE HANDS (with phrase matching and call integration) ----------
+  async function initHandTracking() {
+    hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    hands.onResults((results) => {
+      if (!cameraActive) return;
+      let leftHand = null, rightHand = null;
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+          const landmarks = results.multiHandLandmarks[i];
+          const handedness = results.multiHandedness[i].label;
+          if (handedness === 'Left') leftHand = landmarks;
+          else rightHand = landmarks;
+        }
+      }
+      window.lastLandmarks = { left: leftHand, right: rightHand };
+      const handCount = (leftHand?1:0)+(rightHand?1:0);
+      handStatusSpan.innerText = handCount === 1 ? '🖐️ 1 hand' : handCount === 2 ? '🖐️🖐️ 2 hands' : '✋ 0 hands';
+      if (currentMode === 'sign2speech' || currentMode === 'videocall') {
+        const features = getFeatureVector(leftHand, rightHand);
+        if (features) {
+          const result = classifyFeatures(features);
+          if (result) {
+            inputTextDiv.innerText = result.sign;
+            confidenceSpan.innerText = `Confidence: ${(result.confidence*100).toFixed(0)}%`;
+            if (currentMode === 'sign2speech') {
+              outputTextDiv.innerText = result.sign;
+              liveCaption.innerText = `✋ Recognized: ${result.sign}`;
+              animateSign(result.sign);
+              if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(result.sign);
+                utterance.lang = spokenLangSelect.value;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(utterance);
+              }
+            }
+            // For phrase matching (always active)
+            addToRecentSigns(result.sign);
+            // For video call, also send to remote peer if in call mode
+            if (currentMode === 'videocall' && peerConnection && peerConnection.connectionState === 'connected') {
+              // The phrase matcher already sends via addToRecentSigns, but we also send single signs
+            }
+          } else {
+            inputTextDiv.innerText = '?';
+            confidenceSpan.innerText = 'Confidence: low';
+          }
+        } else {
+          inputTextDiv.innerText = '—';
+          confidenceSpan.innerText = 'Confidence: —';
+        }
+      }
+    });
+  }
 
-  // ---------- UI EVENTS (including phrase buttons) ----------
+  // ---------- CAMERA & MIC ----------
+  async function startCamera() {
+    if (cameraActive) {
+      if (videoStream) videoStream.getTracks().forEach(t => t.stop());
+      if (cameraUtils) cameraUtils.stop();
+      cameraActive = false;
+      cameraBtn.innerText = '📷 Start Camera';
+      cameraBtn.classList.remove('active');
+      liveCaption.innerText = 'Camera off';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoStream = stream;
+      const videoElement = document.createElement('video');
+      videoElement.srcObject = stream;
+      videoElement.play();
+      await new Promise(r => setTimeout(r, 100));
+      cameraUtils = new Camera(videoElement, {
+        onFrame: async () => { await hands.send({ image: videoElement }); },
+        width: 640, height: 480
+      });
+      cameraUtils.start();
+      cameraActive = true;
+      cameraBtn.innerText = '📷 Stop Camera';
+      cameraBtn.classList.add('active');
+      liveCaption.innerText = 'Camera on – show signs';
+    } catch(err) { alert('Camera error: ' + err.message); }
+  }
+  function startMicrophone() {
+    if (!('webkitSpeechRecognition' in window)) { alert('Speech recognition not supported.'); return; }
+    if (micActive) {
+      recognition.stop();
+      micActive = false;
+      micBtn.innerText = '🎙️ Start Mic';
+      micBtn.classList.remove('active');
+      liveCaption.innerText = 'Mic off';
+      return;
+    }
+    recognition = new webkitSpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = spokenLangSelect.value;
+    recognition.onstart = () => {
+      micActive = true;
+      micBtn.innerText = '🎙️ Stop Mic';
+      micBtn.classList.add('active');
+      liveCaption.innerText = 'Listening...';
+    };
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results).map(res => res[0].transcript).join(' ').toLowerCase();
+      inputTextDiv.innerText = transcript;
+      if (currentMode === 'speech2sign') {
+        let found = signsList.find(s => transcript.includes(s));
+        if (!found) found = 'hello';
+        outputTextDiv.innerText = `🤟 ${found}`;
+        confidenceSpan.innerText = 'Confidence: 80%';
+        animateSign(found);
+        liveCaption.innerText = `🤟 Sign: ${found}`;
+      }
+    };
+    recognition.start();
+  }
+
+  // ---------- MODE & UI ----------
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.mode-btn[data-mode="${mode}"]`).classList.add('active');
+    if (mode === 'sign2speech') {
+      micBtn.disabled = true;
+      if (micActive) startMicrophone();
+    } else if (mode === 'speech2sign') {
+      micBtn.disabled = false;
+    } else if (mode === 'videocall') {
+      micBtn.disabled = true;
+      if (micActive) startMicrophone();
+      // Switch to Call tab automatically
+      document.querySelector('[data-tab="call"]').click();
+    }
+  }
+  document.querySelectorAll('.mode-btn').forEach(btn => btn.onclick = () => setMode(btn.getAttribute('data-mode')));
+  cameraBtn.onclick = startCamera;
+  micBtn.onclick = startMicrophone;
+  saveBtn.onclick = () => { const inp = inputTextDiv.innerText, out = outputTextDiv.innerText; if (inp !== '—' && out !== '—') saveTranslation(inp, out); else alert('Nothing to save'); };
+  addSignBtn.onclick = () => { const newName = newSignInput.value.trim(); if (newName && !signsList.includes(newName)) { signsList.push(newName); trainingSamples[newName] = []; updateSignsUI(); saveModelToDB(); newSignInput.value = ''; trainingStatusDiv.innerText = `Added "${newName}".`; } else alert('Duplicate or empty'); };
+  clearModelBtn.onclick = clearModel;
+  exportModelBtn.onclick = exportModel;
+  importModelBtn.onclick = () => importModelInput.click();
+  importModelInput.onchange = (e) => { if (e.target.files.length) importModel(e.target.files[0]); };
+  addPhraseBtn.onclick = () => { const spoken = newPhraseName.value.trim(); if (spoken) startSequenceRecording(); else phraseStatusDiv.innerText = 'Enter a spoken phrase.'; };
   startSequenceRecordBtn.onclick = startSequenceRecording;
-  addPhraseBtn.onclick = () => {
-    const spoken = newPhraseName.value.trim();
-    if (!spoken) { phraseStatusDiv.innerText = 'Enter a spoken phrase first.'; return; }
-    startSequenceRecording(); // will use the current spoken input
-  };
   clearPhrasesBtn.onclick = clearPhrases;
   exportPhrasesBtn.onclick = exportPhrases;
   importPhrasesBtn.onclick = () => importPhrasesInput.click();
   importPhrasesInput.onchange = (e) => { if (e.target.files.length) importPhrases(e.target.files[0]); };
-  
-  // Community upload (signs and phrases separately)
+  createCallBtn.onclick = createCall;
+  joinCallBtn.onclick = joinCall;
+  hangupBtn.onclick = hangupCall;
+
+  // ---------- Community ----------
   uploadSignsBtn.onclick = async () => {
     if (!currentUser) { alert('Sign in to upload.'); return; }
-    const modelName = prompt('Model name', 'My Sign Model');
-    if (!modelName) return;
+    const name = prompt('Model name', 'My Signs');
+    if (!name) return;
     const desc = prompt('Description', 'Signs trained with SIGNAID');
-    const modelData = { trainingSamples, signsList, isTwoHanded: isTwoHandedModel };
     try {
       await db.collection('community_models').add({
-        type: 'signs',
-        name: modelName,
-        description: desc,
+        type: 'signs', name, description: desc,
         signLanguage: document.getElementById('signLang').value,
-        modelData: JSON.stringify(modelData),
-        uploaderUid: currentUser.uid,
-        downloads: 0,
+        modelData: JSON.stringify({ trainingSamples, signsList, isTwoHanded: isTwoHandedModel }),
+        uploaderUid: currentUser.uid, downloads: 0,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       trainingStatusDiv.innerText = 'Signs uploaded!';
@@ -543,18 +1037,15 @@
   };
   uploadPhrasesBtn.onclick = async () => {
     if (!currentUser) { alert('Sign in to upload.'); return; }
-    const modelName = prompt('Phrase model name', 'My Phrase Set');
-    if (!modelName) return;
+    const name = prompt('Phrase model name', 'My Phrases');
+    if (!name) return;
     const desc = prompt('Description', 'Phrases for sentence translation');
     try {
       await db.collection('community_models').add({
-        type: 'phrases',
-        name: modelName,
-        description: desc,
+        type: 'phrases', name, description: desc,
         signLanguage: document.getElementById('signLang').value,
         modelData: JSON.stringify({ phrases }),
-        uploaderUid: currentUser.uid,
-        downloads: 0,
+        uploaderUid: currentUser.uid, downloads: 0,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       phraseStatusDiv.innerText = 'Phrases uploaded!';
@@ -575,47 +1066,42 @@
         const div = document.createElement('div');
         div.className = 'community-item';
         div.innerHTML = `
-          <div>
-            <div class="community-name">${escapeHtml(name)} (${type})</div>
-            <div class="community-meta">${escapeHtml(desc)} | ⬇️ ${data.downloads || 0}</div>
-          </div>
+          <div><div class="community-name">${escapeHtml(name)} (${type})</div>
+          <div class="community-meta">${escapeHtml(desc)} | ⬇️ ${data.downloads || 0}</div></div>
           <button class="download-btn" data-id="${doc.id}" data-type="${type}">Download</button>
         `;
         communityList.appendChild(div);
       });
       document.querySelectorAll('.download-btn').forEach(btn => {
         btn.onclick = async () => {
-          const docId = btn.getAttribute('data-id');
+          const id = btn.getAttribute('data-id');
           const type = btn.getAttribute('data-type');
-          await downloadCommunityModel(docId, type);
+          const doc = await db.collection('community_models').doc(id).get();
+          if (!doc.exists) return;
+          const data = doc.data();
+          const modelData = JSON.parse(data.modelData);
+          if (type === 'signs') {
+            trainingSamples = modelData.trainingSamples;
+            signsList = modelData.signsList;
+            isTwoHandedModel = modelData.isTwoHanded || false;
+            await saveModelToDB();
+            updateSignsUI();
+            trainingStatusDiv.innerText = `Downloaded signs "${data.name}".`;
+          } else if (type === 'phrases') {
+            phrases = modelData.phrases;
+            nextPhraseId = Math.max(...phrases.map(p => p.id), 0) + 1;
+            await savePhrasesToDB();
+            updatePhrasesUI();
+            phraseStatusDiv.innerText = `Downloaded phrases "${data.name}".`;
+          }
+          await db.collection('community_models').doc(id).update({ downloads: firebase.firestore.FieldValue.increment(1) });
+          document.querySelector('[data-tab="local"]').click();
         };
       });
     } catch(err) { communityList.innerHTML = '<div>Error loading.</div>'; }
   }
-  async function downloadCommunityModel(docId, type) {
-    try {
-      const doc = await db.collection('community_models').doc(docId).get();
-      if (!doc.exists) return;
-      const data = doc.data();
-      const modelData = JSON.parse(data.modelData);
-      if (type === 'signs') {
-        trainingSamples = modelData.trainingSamples;
-        signsList = modelData.signsList;
-        isTwoHandedModel = modelData.isTwoHanded || false;
-        await saveModelToDB();
-        updateSignsUI();
-        trainingStatusDiv.innerText = `Downloaded signs model "${data.name}".`;
-      } else if (type === 'phrases') {
-        phrases = modelData.phrases;
-        nextPhraseId = Math.max(...phrases.map(p => p.id), 0) + 1;
-        await savePhrasesToDB();
-        updatePhrasesUI();
-        phraseStatusDiv.innerText = `Downloaded phrases model "${data.name}".`;
-      }
-      await db.collection('community_models').doc(docId).update({ downloads: firebase.firestore.FieldValue.increment(1) });
-      document.querySelector('[data-tab="local"]').click();
-    } catch(err) { console.error(err); alert('Download failed.'); }
-  }
+  communitySearch.oninput = (e) => loadCommunityModels(e.target.value);
+  function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
   // ---------- TAB SWITCHING ----------
   tabs.forEach(tab => {
@@ -626,6 +1112,7 @@
       document.getElementById('localTab').style.display = target === 'local' ? 'block' : 'none';
       document.getElementById('phrasesTab').style.display = target === 'phrases' ? 'block' : 'none';
       document.getElementById('communityTab').style.display = target === 'community' ? 'block' : 'none';
+      document.getElementById('callTab').style.display = target === 'call' ? 'block' : 'none';
       if (target === 'community') loadCommunityModels();
     };
   });
@@ -648,7 +1135,7 @@
 
   async function init() {
     initAvatar();
-    await initHandTracking(); // must be defined
+    await initHandTracking();
     await initOfflineDB();
     setMode('sign2speech');
   }
