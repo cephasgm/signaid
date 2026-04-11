@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIGNAID - Offline</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:system-ui; }
+    body {
+      background: linear-gradient(135deg, #0a0f1e, #1a2f45);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: rgba(10,15,30,0.6);
+      backdrop-filter: blur(20px);
+      border-radius: 48px;
+      padding: 40px;
+      text-align: center;
+      border: 1px solid rgba(37,99,235,0.4);
+      max-width: 500px;
+      width: 100%;
+    }
+    h1 { font-size: 2.5rem; color: white; margin-bottom: 16px; }
+    p { color: #94a3b8; margin-bottom: 24px; line-height: 1.5; }
+    .offline-icon { font-size: 4rem; margin-bottom: 20px; }
+    button {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      border: none;
+      padding: 12px 32px;
+      border-radius: 40px;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: 0.2s;
+    }
+    button:hover { transform: scale(1.02); }
+    .retry-status { margin-top: 20px; font-size: 0.8rem; color: #60a5fa; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="offline-icon">📡</div>
+  <h1>No Internet Connection</h1>
+  <p>SIGNAID is in offline mode. Some features may be limited, but you can still use previously cached translations and signs.</p>
+  <button id="retryBtn">⟳ Retry Connection</button>
+  <div class="retry-status" id="status">Checking network...</div>
+</div>
+<script>
+  let retryInterval = null;
+  const statusDiv = document.getElementById('status');
+  const retryBtn = document.getElementById('retryBtn');
+  
+  function checkConnection() {
+    fetch('/manifest.json', { method: 'HEAD', cache: 'no-store' })
+      .then(() => {
+        statusDiv.innerText = '✅ Connection restored! Redirecting...';
+        if (retryInterval) clearInterval(retryInterval);
+        window.location.href = '/';
+      })
+      .catch(() => {
+        statusDiv.innerText = '❌ Still offline. Will retry automatically.';
+      });
+  }
+  
+  retryBtn.onclick = () => {
+    statusDiv.innerText = 'Checking...';
+    checkConnection();
+  };
+  
+  // Auto retry every 5 seconds
+  retryInterval = setInterval(checkConnection, 5000);
+</script>
+</body>
+</html>
